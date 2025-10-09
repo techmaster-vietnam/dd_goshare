@@ -1,14 +1,9 @@
 package models
 
-import (
-	"gorm.io/gorm"
-)
-
 // Topic đại diện cho chủ đề
 type Topic struct {
 	ID        string         `gorm:"primaryKey;size:12" json:"id"`
 	Title     string         `gorm:"size:200" json:"title"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName chỉ định tên bảng cho Topic

@@ -6,12 +6,9 @@ type Role struct {
 	ID          int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name        string `gorm:"size:100;not null;unique;index" json:"name"`
 	Description string `gorm:"size:255" json:"description,omitempty"`
-	ParentID    *int   `gorm:"column:parent_id;index" json:"parent_id,omitempty"`
 
 	// Relationships
 	Rules    []Rule `gorm:"many2many:rule_roles;" json:"rules,omitempty"`
-	Parent   *Role  `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
-	Children []Role `gorm:"foreignKey:ParentID" json:"children,omitempty"`
 }
 
 // TableName specifies the table name for Role model
@@ -24,7 +21,7 @@ type Rule struct {
 	Name       string `gorm:"size:255" json:"name"`
 	Path       string `gorm:"size:500;not null;uniqueIndex:idx_rule_unique" json:"path"`
 	Method     string `gorm:"size:10;not null;uniqueIndex:idx_rule_unique" json:"method"`
-	AccessType string `gorm:"size:50;not null;default:'allow';index" json:"access_type"`
+	AccessType string `gorm:"size:50;not null;index" json:"access_type"`
 	IsPrivate  bool   `gorm:"default:true;index" json:"is_private"`
 	Service    string `gorm:"size:50;uniqueIndex:idx_rule_unique" json:"service"`
 	// Relationships
@@ -71,10 +68,6 @@ func (r *Role) IsAdmin() bool {
 	return r.Name == "admin"
 }
 
-func (r *Role) HasParent() bool {
-	return r.ParentID != nil
-}
-
 // Helper methods for Rule
 func (r *Rule) IsPublic() bool {
 	return !r.IsPrivate
@@ -104,6 +97,5 @@ func (r *RoleRequest) SetRole() Role {
 	return Role{
 		Name:        r.Name,
 		Description: r.Description,
-		ParentID:    r.ParentID,
 	}
 }
