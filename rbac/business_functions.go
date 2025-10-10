@@ -123,10 +123,11 @@ func RegisterBusinessRoute(group fiber.Router, method, path, businessFunction st
 	if config.Service != "" {
 		serviceValue = config.Service
 	}
-	key := method + "|" + path + "|" + serviceValue
+	fullPath := getFullPath(group, path)
+	key := method + "|" + fullPath + "|" + serviceValue
 	freshRoutes[key] = Route{
 		Method:     method,
-		Path:       path,
+		Path:       fullPath,
 		AccessType: businessFunction,
 		IsPrivate:  isPrivate,
 	}
@@ -135,7 +136,7 @@ func RegisterBusinessRoute(group fiber.Router, method, path, businessFunction st
 	routeKey := method + " " + path
 	routesRoles[routeKey] = Route{
 		Method:     method,
-		Path:       path,
+		Path:       fullPath,
 		AccessType: businessFunction,
 		IsPrivate:  isPrivate,
 		Roles:      make(pmodel.Roles), // Will be populated by RequireFunction
