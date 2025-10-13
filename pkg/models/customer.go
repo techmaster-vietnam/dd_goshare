@@ -59,6 +59,13 @@ type CustomerSubscription struct {
 	ExpiredAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
+type UpdateCustomerInfoRequest struct {
+	Name     *string `json:"name"`
+	Streak   *int    `json:"streak"`
+	Score    *int    `json:"score"`
+	// AvatarURL will be handled via file upload in handler
+}
+
 // TableName chỉ định tên bảng cho CustomerSubscription
 func (CustomerSubscription) TableName() string {
 	return "customer_subscriptions"
