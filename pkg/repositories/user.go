@@ -71,12 +71,8 @@ func (r *UserRepository) Create(ctx context.Context, tableName string, user *Use
 	return user.ID, nil
 }
 
-func (r *UserRepository) Update(ctx context.Context, tableName string, user *User) error {
-	tx := r.db.WithContext(ctx).Table(tableName).Where("id = ?", user.ID).Updates(map[string]interface{}{
-		"name":  user.Name,
-		"email": user.Email,
-	})
-	return tx.Error
+func (r *UserRepository) UpdateUserInfor(ctx context.Context, tableName string, user *User) error {
+	return r.db.Table(tableName).Save(user).Error
 }
 
 func (r *UserRepository) Delete(ctx context.Context, tableName string, id int64) error {

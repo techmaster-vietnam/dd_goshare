@@ -15,12 +15,11 @@ func NewUserHandler(service *services.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-// tableName: "customers", "employees"
-func (h *UserHandler) GetByID(c *fiber.Ctx) error {
-	tableName := c.Query("table") // truyền table qua query param, ví dụ ?table=users
+// tableName is received as a parameter, not from the path
+func (h *UserHandler) GetInfoByID(c *fiber.Ctx, tableName string) error {
 	id := c.Params("id")
-	if id == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	if tableName == "" || id == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid table or id"})
 	}
 	acc, err := h.service.GetByUserID(c.Context(), tableName, id)
 	if err != nil {
@@ -32,8 +31,7 @@ func (h *UserHandler) GetByID(c *fiber.Ctx) error {
 	return c.JSON(acc)
 }
 
-func (h *UserHandler) GetByUsername(c *fiber.Ctx) error {
-	tableName := c.Query("table")
+func (h *UserHandler) GetByUsername(c *fiber.Ctx, tableName string) error {
 	username := c.Params("username")
 	acc, err := h.service.GetByUsername(c.Context(), tableName, username)
 	if err != nil {

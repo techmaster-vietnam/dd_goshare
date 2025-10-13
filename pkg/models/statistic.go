@@ -4,10 +4,10 @@ import (
 	"time"
 )
 
-// UserStatistics đại diện cho thống kê người dùng
-type UserStatistics struct {
+// CustomerStatistics đại diện cho thống kê khách hàng
+type CustomerStatistics struct {
 	ID                      string     `gorm:"primaryKey;size:12" json:"id"`
-	UserID                  string     `gorm:"size:12;uniqueIndex" json:"user_id"`
+	CustomerID              string     `gorm:"size:12;uniqueIndex" json:"customer_id"`
 	TotalDialogsCompleted   int        `gorm:"default:0" json:"total_dialogs_completed"`
 	TotalExercisesCompleted int        `gorm:"default:0" json:"total_exercises_completed"`
 	TotalTimeSpent          int        `gorm:"default:0" json:"total_time_spent"`
@@ -52,7 +52,7 @@ func (DialogStatistics) TableName() string {
 	return "dialog_statistics"
 }
 
-// TableName chỉ định tên bảng cho UserStatistics
-func (UserStatistics) TableName() string {
-	return "user_statistics"
+// TableName chỉ định tên bảng cho CustomerStatistics
+func (CustomerStatistics) TableName() string {
+	return "customer_statistics"
 }

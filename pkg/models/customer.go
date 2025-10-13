@@ -59,6 +59,12 @@ type CustomerSubscription struct {
 	ExpiredAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
+type UpdateCustomerStatisticsRequest struct {
+	TotalDialogsCompleted   *int `json:"total_dialogs_completed"`
+	TotalExercisesCompleted *int `json:"total_exercises_completed"`
+	TotalTimeSpent          *int `json:"total_time_spent"`
+}
+
 type UpdateCustomerInfoRequest struct {
 	Name     *string `json:"name"`
 	Streak   *int    `json:"streak"`

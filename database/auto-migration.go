@@ -35,7 +35,7 @@ func DBMigrator(db *gorm.DB) error {
 		&models.PaymentLog{},
 		&models.HistoryLog{},
 		&models.SystemStatistics{},
-		&models.UserStatistics{},
+		&models.CustomerStatistics{},
 		&models.DialogStatistics{},
 		// Authentication models
 		&models.AuthProvider{},

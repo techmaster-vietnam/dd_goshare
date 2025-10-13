@@ -14,7 +14,6 @@ func (Image) TableName() string {
 }
 
 type ImageFigureRequest struct {
-	TopicID string `json:"topic_id"`
 	Infor_1 string `json:"infor_1"`
 	Infor_2 string `json:"infor_2"`
 }
