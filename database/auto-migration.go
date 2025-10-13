@@ -19,6 +19,7 @@ func DBMigrator(db *gorm.DB) error {
 		&models.Dialog{},
 		&models.Audio{},
 		&models.Image{},
+		&models.CharacterDescription{},
 		&models.Word{},
 		&models.WordInDialog{},
 		&models.FillInBlank{},
