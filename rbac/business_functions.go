@@ -39,6 +39,7 @@ const (
 
 	// Image/Media management functions
 	CREATE_IMAGE_FIGURE = "image.create.figure" // POST /figure
+	VIEW_IMAGE_FIGURE    = "image.view.figure"   // GET /figure/:topicID
 	UPLOAD_IMAGE        = "image.upload"        // POST /
 	SERVE_IMAGE_FILE    = "image.serve.file"    // GET /:dialogID/:filename
 
