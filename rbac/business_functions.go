@@ -27,7 +27,6 @@ const (
 
 	// Rule management functions
 	VIEW_RULES   = "rule.view"   // GET /rules
-	CREATE_RULES = "rule.create" // POST /rules
 
 	// Dialog management functions
 	VIEW_DIALOG_RESULT      = "dialog.view.result"      // GET /dialog/:dialogID
@@ -157,6 +156,8 @@ func RegisterBusinessRoute(group fiber.Router, method, path, businessFunction st
 		Put(group, path, businessFunction, exp, isPrivate, handler)
 	case "DELETE":
 		Delete(group, path, businessFunction, exp, isPrivate, handler)
+	case "PATCH":
+		Patch(group, path, businessFunction, exp, isPrivate, handler)
 	default:
 		panic(fmt.Sprintf("Unsupported HTTP method: %s", method))
 	}
