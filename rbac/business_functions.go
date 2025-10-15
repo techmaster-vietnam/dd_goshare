@@ -19,10 +19,16 @@ const (
 	VIEW_ROLES_RULE   = "roles.rule.view"   // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
 	VIEW_RULES_ROLE   = "rule.roles.view"   // GET /rules, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
 	VIEW_ROLES        = "role.view"         // GET /roles
+	VIEW_USER_ROLES   = "roles.user.view"   // GET /users/:userId/roles
 	CREATE_ROLES = "role.create" // POST /roles
 	UPDATE_ROLES = "role.update" // PUT /roles/:id
 	DELETE_ROLES = "role.delete" // DELETE /roles/:id
 	ASSIGN_ROLES = "role.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles, /roles/:roleId/rules, /rules/:ruleId/roles
+	ASSIGN_ROLE_USER = "role.user.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles
+	ASSIGN_RULE_ROLE = "role.rule.assign" // POST/DELETE/PUT /rules/:ruleId/roles/:roleId
+	UPDATE_ROLE_USER = "role.user.update" // PUT /roles/:roleId/users/:userId
+
+	DELETE_ROLE_USER = "role.user.delete" // DELETE /roles/:roleId/users/:userId
 	DELETE_ROLE_RULE = "role.rule.delete" // DELETE /rules/:ruleId/roles/:roleId
 
 	// Rule management functions
