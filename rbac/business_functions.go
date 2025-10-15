@@ -16,7 +16,9 @@ const (
 	REGISTER = "auth.register" // POST /auth/register
 
 	// Role management functions
-	VIEW_ROLES   = "role.view"   // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
+	VIEW_ROLES_RULE   = "roles.rule.view"   // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
+	VIEW_RULES_ROLE   = "rule.roles.view"   // GET /rules, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
+	VIEW_ROLES        = "role.view"         // GET /roles
 	CREATE_ROLES = "role.create" // POST /roles
 	UPDATE_ROLES = "role.update" // PUT /roles/:id
 	DELETE_ROLES = "role.delete" // DELETE /roles/:id
