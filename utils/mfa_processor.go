@@ -12,7 +12,7 @@ import (
 func RunMFAAlignment() error {
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
-		dataDir = "./data"
+		dataDir = "../data"
 	}
 	dictPath := filepath.Join(dataDir, "english_us_mfa.dict")
 
