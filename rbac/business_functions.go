@@ -14,7 +14,7 @@ const (
 	// Auth functions
 	LOGIN    = "auth.login"    // POST /auth/login
 	REGISTER = "auth.register" // POST /auth/register
-
+	CHANGE_PASSWORD = "auth.change.password" // PUT /auth/change-password
 	// Role management functions
 	VIEW_ROLES_RULE   = "roles.rule.view"   // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
 	VIEW_RULES_ROLE   = "rule.roles.view"   // GET /rules, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
@@ -61,6 +61,7 @@ const (
 	// Employee management functions
 	CREATE_EMPLOYEES = "employee.create" // POST /employees
 	VIEW_EMPLOYEES   = "employee.view"   // GET /employees
+	DELETE_EMPLOYEE = "employee.delete" // DELETE /employees/:id
 	// Processing functions
 	PROCESS_ALIGNMENT = "processing.align" // POST /align
 )
