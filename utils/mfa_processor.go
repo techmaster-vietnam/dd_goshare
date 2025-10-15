@@ -3,19 +3,26 @@ package utils
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 // RunMFAAlignment chạy lệnh MFA align từ thư mục data
 func RunMFAAlignment() error {
-	// Chuyển đến thư mục data và chạy MFA
+	// Xác định thư mục data tuyệt đối
+	dataDir := "../data"
+	dictPath := filepath.Join(dataDir, "english_us_mfa.dict")
+	if _, err := os.Stat(dictPath); os.IsNotExist(err) {
+		return fmt.Errorf("dictionary file not found at %s", dictPath)
+	}
 
 	cmd := exec.Command("mfa", "align", "--clean", "--use_mp", "--output_format", "json",
 		"corpus",
 		"english_us_mfa.dict",
 		"english_mfa.zip",
 		"output")
-	cmd.Dir = "../data"
+	cmd.Dir = dataDir
 
 	log.Println("Running MFA alignment from data directory...")
 
