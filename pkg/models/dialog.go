@@ -46,7 +46,6 @@ type DialogResultItem struct {
 
 // TimestampResult represents the timestamp data structure
 type TimestampResult struct {
-	Audio    string              `json:"audio"`
 	Sentence []TimestampSentence `json:"sentence"`
 	Words    [][]interface{}     `json:"words"`
 }

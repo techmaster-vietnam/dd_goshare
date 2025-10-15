@@ -26,8 +26,6 @@ func DBMigrator(db *gorm.DB) error {
 		&models.Tag{},
 		&models.DialogTag{},
 		&models.Comment{},
-		&models.CustomerDialogProgress{},
-		&models.CustomerDialogExercise{},
 		&models.Achievement{},
 		&models.CustomerAchievement{},
 		&models.Subscription{},
