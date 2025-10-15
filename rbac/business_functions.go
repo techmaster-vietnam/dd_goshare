@@ -23,6 +23,7 @@ const (
 	UPDATE_ROLES = "role.update" // PUT /roles/:id
 	DELETE_ROLES = "role.delete" // DELETE /roles/:id
 	ASSIGN_ROLES = "role.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles, /roles/:roleId/rules, /rules/:ruleId/roles
+	DELETE_ROLE_RULE = "role.rule.delete" // DELETE /rules/:ruleId/roles/:roleId
 
 	// Rule management functions
 	VIEW_RULES   = "rule.view"   // GET /rules
