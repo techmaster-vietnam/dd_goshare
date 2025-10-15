@@ -28,7 +28,6 @@ func NewTopicDialogHandler(topicService *service.TopicService, dialogService *se
 }
 
 func (h *TopicDialogHandler) GetAllTopicsDialogs(c *fiber.Ctx) error {
-	// Query params: title (string), tags (comma-separated), page, limit, sort, order
 	title := c.Query("title")
 	tagsParam := c.Query("tags")
 	page := c.QueryInt("page", 1)

@@ -10,9 +10,18 @@ import (
 
 // RunMFAAlignment chạy lệnh MFA align từ thư mục data
 func RunMFAAlignment() error {
-	// Xác định thư mục data tuyệt đối
-	dataDir := "../data"
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data"
+	}
 	dictPath := filepath.Join(dataDir, "english_us_mfa.dict")
+
+	// Log thư mục làm việc thực tế
+	wd, _ := os.Getwd()
+	log.Printf("Current working directory: %s", wd)
+	absDictPath, _ := filepath.Abs(dictPath)
+	log.Printf("Absolute dictionary path: %s", absDictPath)
+
 	if _, err := os.Stat(dictPath); os.IsNotExist(err) {
 		return fmt.Errorf("dictionary file not found at %s", dictPath)
 	}
