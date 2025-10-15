@@ -15,7 +15,7 @@ func RunMFAAlignment() error {
 		"english_us_mfa.dict",
 		"english_mfa.zip",
 		"output")
-	cmd.Dir = "data"
+	cmd.Dir = "../data"
 
 	log.Println("Running MFA alignment from data directory...")
 
