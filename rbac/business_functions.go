@@ -12,18 +12,18 @@ import (
 // Business function mappings - đây là các chức năng thực tế của hệ thống
 const (
 	// Auth functions
-	LOGIN    = "auth.login"    // POST /auth/login
-	REGISTER = "auth.register" // POST /auth/register
+	LOGIN           = "auth.login"           // POST /auth/login
+	REGISTER        = "auth.register"        // POST /auth/register
 	CHANGE_PASSWORD = "auth.change.password" // PUT /auth/change-password
 	// Role management functions
-	VIEW_ROLES_RULE   = "roles.rule.view"   // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
-	VIEW_RULES_ROLE   = "rule.roles.view"   // GET /rules, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
-	VIEW_ROLES        = "role.view"         // GET /roles
-	VIEW_USER_ROLES   = "roles.user.view"   // GET /users/:userId/roles
-	CREATE_ROLES = "role.create" // POST /roles
-	UPDATE_ROLES = "role.update" // PUT /roles/:id
-	DELETE_ROLES = "role.delete" // DELETE /roles/:id
-	ASSIGN_ROLES = "role.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles, /roles/:roleId/rules, /rules/:ruleId/roles
+	VIEW_ROLES_RULE  = "roles.rule.view"  // GET /roles, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
+	VIEW_RULES_ROLE  = "rule.roles.view"  // GET /rules, GET /users/:userId/roles, GET /roles/:roleId/rules, GET /rules/:ruleId/roles
+	VIEW_ROLES       = "role.view"        // GET /roles
+	VIEW_USER_ROLES  = "roles.user.view"  // GET /users/:userId/roles
+	CREATE_ROLES     = "role.create"      // POST /roles
+	UPDATE_ROLES     = "role.update"      // PUT /roles/:id
+	DELETE_ROLES     = "role.delete"      // DELETE /roles/:id
+	ASSIGN_ROLES     = "role.assign"      // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles, /roles/:roleId/rules, /rules/:ruleId/roles
 	ASSIGN_ROLE_USER = "role.user.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles
 	ASSIGN_RULE_ROLE = "role.rule.assign" // POST/DELETE/PUT /rules/:ruleId/roles/:roleId
 	UPDATE_ROLE_USER = "role.user.update" // PUT /roles/:roleId/users/:userId
@@ -32,22 +32,24 @@ const (
 	DELETE_ROLE_RULE = "role.rule.delete" // DELETE /rules/:ruleId/roles/:roleId
 
 	// Rule management functions
-	VIEW_RULES   = "rule.view"   // GET /rules
+	VIEW_RULES = "rule.view" // GET /rules
 
 	// Dialog management functions
 	VIEW_DIALOG_RESULT      = "dialog.view.result"      // GET /dialog/:dialogID
-	UPDATE_DIALOG_RESULT    = "dialog.update.result"    // PUT /dialog/:dialogID
+	UPDATE_DIALOG_RESULT    = "dialog.update.result"    // PATCH /dialog/:dialogID
 	UPDATE_DIALOG_IMAGES    = "dialog.update.images"    // POST /dialog/dialogs/:dialogID/images
 	SERVE_DIALOG_AUDIO_FILE = "dialog.serve.audio"      // GET /dialog/audio/:filename
+	SERVE_DIALOG_IMAGE_FILE = "dialog.serve.image"      // GET /images/dialog/:dialogID/:filename
 	VIEW_ALL_DIALOG_RESULTS = "dialog.view.all.results" // GET /results
 	VIEW_ALL_DIALOGS        = "dialog.view.all"         // GET /dialogs
 
 	// Word management functions
 	CREATE_FILLWORDS = "fillword.create" // GET /generate/:dialogID
+	UPDATE_WORD_TIMESTAMP = "word.timestamp.update" // PATCH /dialog/:dialogID/words
 
 	// Image/Media management functions
 	CREATE_IMAGE_FIGURE = "image.create.figure" // POST /figure
-	VIEW_IMAGE_FIGURE    = "image.view.figure"   // GET /figure/:topicID
+	VIEW_IMAGE_FIGURE   = "image.view.figure"   // GET /figure/:topicID
 	UPLOAD_IMAGE        = "image.upload"        // POST /
 	SERVE_IMAGE_FILE    = "image.serve.file"    // GET /:dialogID/:filename
 
@@ -67,7 +69,7 @@ const (
 	// Employee management functions
 	CREATE_EMPLOYEES = "employee.create" // POST /employees
 	VIEW_EMPLOYEES   = "employee.view"   // GET /employees
-	DELETE_EMPLOYEE = "employee.delete" // DELETE /employees/:id
+	DELETE_EMPLOYEE  = "employee.delete" // DELETE /employees/:id
 	// Processing functions
 	PROCESS_ALIGNMENT = "processing.align" // POST /align
 )
