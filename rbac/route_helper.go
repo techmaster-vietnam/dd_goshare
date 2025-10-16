@@ -135,7 +135,11 @@ func Patch(group fiber.Router, path string, businessName string, roleExp RoleExp
 		Name:       businessName,
 	}
 
-	group.Patch(path, handler)
+	if isPrivate {
+		group.Patch(path, CheckPermissionMiddleware(), handler)
+	} else {
+		group.Patch(path, handler)
+	}
 	assignRoles(route)
 }
 
