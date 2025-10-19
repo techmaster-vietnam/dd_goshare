@@ -25,6 +25,9 @@ const (
 	DELETE_ROLES     = "role.delete"      // DELETE /roles/:id
 	ASSIGN_ROLES     = "role.assign"      // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles, /roles/:roleId/rules, /rules/:ruleId/roles
 	ASSIGN_ROLE_USER = "role.user.assign" // POST/DELETE/PUT /roles/:roleId/users/:userId, /users/:userId/roles
+
+	REFRESH_CACHE = "refresh.cache" // POST /rbac/reload-cache
+
 	ASSIGN_RULE_ROLE = "role.rule.assign" // POST/DELETE/PUT /rules/:ruleId/roles/:roleId
 	UPDATE_ROLE_USER = "role.user.update" // PUT /roles/:roleId/users/:userId
 
@@ -44,7 +47,7 @@ const (
 	VIEW_ALL_DIALOGS        = "dialog.view.all"         // GET /dialogs
 
 	// Word management functions
-	CREATE_FILLWORDS = "fillword.create" // GET /generate/:dialogID
+	CREATE_FILLWORDS      = "fillword.create"       // GET /generate/:dialogID
 	UPDATE_WORD_TIMESTAMP = "word.timestamp.update" // PATCH /dialog/:dialogID/words
 
 	// Image/Media management functions
