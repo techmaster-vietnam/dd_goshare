@@ -3,7 +3,7 @@ package models
 type Comment struct {
 	ID              string  `gorm:"primaryKey;size:12" json:"id"`
 	DialogID        string  `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"dialog_id"`
-	UserID          string  `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user_id"`
+	UserID          string  `gorm:"size:50;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user_id"`
 	Content         string  `gorm:"type:text" json:"content"`
 	Likes           int     `gorm:"default:0" json:"likes"`
 	Rating          *int    `json:"rating"`

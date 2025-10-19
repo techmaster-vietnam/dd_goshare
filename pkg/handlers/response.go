@@ -17,3 +17,14 @@ type SuccessResponse struct {
 	Message string      `json:"message,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
 }
+
+type RefreshTokenResponse struct {
+	StatusCode  int    `json:"status_code"`
+	Message     string `json:"message"`
+	AccessToken string `json:"access_token"`
+}
+
+type LogoutResponse struct {
+	StatusCode int    `json:"status_code"`
+	Message    string `json:"message"`
+}
