@@ -19,7 +19,7 @@ import (
 
 func CallAI(systemMessage, userMessage string) (string, error) {
 	apiKey := os.Getenv("API_KEY")
-	apiURL := os.Getenv("GEN_IMAGE_URL")
+	apiURL := os.Getenv("API_URL")
 
 	// Tạo request body
 	reqBody := models.AIRequest{
