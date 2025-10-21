@@ -135,26 +135,25 @@ func LoadRulesFromDB() error {
 	}
 
 	type RuleWithRoles struct {
-		ID         int    `json:"id"`
-		Path       string `json:"path"`
-		Method     string `json:"method"`
-		AccessType string `json:"access_type"`
-		IsPrivate  bool   `json:"is_private"`
-		Service    string `json:"service"`
-		RoleIDs    string `json:"role_ids"`
+		ID        int    `json:"id"`
+		Path      string `json:"path"`
+		Method    string `json:"method"`
+		IsPrivate bool   `json:"is_private"`
+		Service   string `json:"service"`
+		RoleIDs   string `json:"role_ids"`
 	}
 
 	var rules []RuleWithRoles
 	query := `
-	SELECT r.id, r.path, r.method, r.access_type, r.is_private, r.service,
-		   STRING_AGG(rr.role_id::text, ',') as role_ids
+	SELECT r.id, r.path, r.method, r.is_private, r.service,
+       STRING_AGG(rr.role_id::text, ',') as role_ids
 	FROM rules r
 	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
-	WHERE r.service = ? OR r.service = ''
+	WHERE r.service = 'dd_backend' OR r.service = ''
 	GROUP BY r.id, r.path, r.method
 	`
 
-	if err := database.Raw(query, config.Service).Scan(&rules).Error; err != nil {
+	if err := database.Raw(query).Scan(&rules).Error; err != nil {
 		return fmt.Errorf("failed to load rules: %w", err)
 	}
 
@@ -164,11 +163,10 @@ func LoadRulesFromDB() error {
 
 	for _, rule := range rules {
 		route := Route{
-			Path:       rule.Path,
-			Method:     strings.ToUpper(rule.Method),
-			IsPrivate:  rule.IsPrivate,
-			AccessType: rule.AccessType,
-			Roles:      make(pmodel.Roles),
+			Path:      rule.Path,
+			Method:    strings.ToUpper(rule.Method),
+			IsPrivate: rule.IsPrivate,
+			Roles:     make(pmodel.Roles),
 		}
 
 		routeKey := route.Method + " " + route.Path

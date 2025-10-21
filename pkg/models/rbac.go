@@ -18,11 +18,9 @@ func (Role) TableName() string {
 
 type Rule struct {
 	ID         int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name       string `gorm:"size:255" json:"name"`
 	Path       string `gorm:"size:500;not null;uniqueIndex:idx_rule_unique" json:"path"`
 	Method     string `gorm:"size:10;not null;uniqueIndex:idx_rule_unique" json:"method"`
-	AccessType string `gorm:"size:50;not null;index" json:"access_type"`
-	IsPrivate  bool   `gorm:"default:true;index" json:"is_private"`
+	IsPrivate  bool   `gorm:"index" json:"is_private"`
 	Service    string `gorm:"size:50;uniqueIndex:idx_rule_unique" json:"service"`
 	// Relationships
 	Roles []Role `gorm:"many2many:rule_roles;" json:"roles,omitempty"`
@@ -77,13 +75,6 @@ func (r *Rule) GetRouteKey() string {
 	return r.Method + " " + r.Path
 }
 
-func (r *Rule) IsAllowType() bool {
-	return r.AccessType == "allow" || r.AccessType == "allow_all"
-}
-
-func (r *Rule) IsForbidType() bool {
-	return r.AccessType == "forbid" || r.AccessType == "forbid_all"
-}
 
 // RoleRequest dùng để validate và nhận dữ liệu tạo/cập nhật role từ API
 type RoleRequest struct {

@@ -48,7 +48,6 @@ func RegisterRulesToDB() error {
 			// Name sẽ được set qua API, không auto-sync từ code
 			Path:       route.Path,
 			Method:     route.Method,
-			AccessType: route.AccessType,
 			IsPrivate:  route.IsPrivate,
 			Service:    config.Service,
 		}
@@ -63,7 +62,7 @@ func RegisterRulesToDB() error {
 	// Sử dụng ON CONFLICT DO UPDATE để cập nhật access_type, is_private, name nếu rule đã tồn tại
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "path"}, {Name: "method"}, {Name: "service"}},
-		DoUpdates: clause.AssignmentColumns([]string{"access_type", "is_private", "name"}),
+		DoNothing:       true,
 	}).Create(&rules)
 	if result.Error != nil {
 		return fmt.Errorf("failed to register rules: %w", result.Error)

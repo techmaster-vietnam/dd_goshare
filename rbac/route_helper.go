@@ -42,7 +42,7 @@ func getFullPath(_ fiber.Router, path string) string {
 }
 
 // Get đăng ký GET route với RBAC theo Core pattern
-func Get(group fiber.Router, path string, businessName string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
+func Get(group fiber.Router, path string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
 	roles, accessType := roleExp()
 	route := Route{
 		Path:       getFullPath(group, path),
@@ -50,7 +50,6 @@ func Get(group fiber.Router, path string, businessName string, roleExp RoleExp, 
 		IsPrivate:  isPrivate,
 		Roles:      roles,
 		AccessType: accessType,
-		Name:       businessName,
 	}
 
 	if isPrivate {
@@ -64,7 +63,7 @@ func Get(group fiber.Router, path string, businessName string, roleExp RoleExp, 
 }
 
 // Post đăng ký POST route với RBAC theo Core pattern
-func Post(group fiber.Router, path string, businessName string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
+func Post(group fiber.Router, path string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
 	roles, accessType := roleExp()
 	route := Route{
 		Path:       getFullPath(group, path),
@@ -72,7 +71,6 @@ func Post(group fiber.Router, path string, businessName string, roleExp RoleExp,
 		IsPrivate:  isPrivate,
 		Roles:      roles,
 		AccessType: accessType,
-		Name:       businessName,
 	}
 
 	if isPrivate {
@@ -84,7 +82,7 @@ func Post(group fiber.Router, path string, businessName string, roleExp RoleExp,
 }
 
 // Put đăng ký PUT route với RBAC theo Core pattern
-func Put(group fiber.Router, path string, businessName string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
+func Put(group fiber.Router, path string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
 	roles, accessType := roleExp()
 	route := Route{
 		Path:       getFullPath(group, path),
@@ -92,7 +90,6 @@ func Put(group fiber.Router, path string, businessName string, roleExp RoleExp, 
 		IsPrivate:  isPrivate,
 		Roles:      roles,
 		AccessType: accessType,
-		Name:       businessName,
 	}
 
 	if isPrivate {
@@ -104,7 +101,7 @@ func Put(group fiber.Router, path string, businessName string, roleExp RoleExp, 
 }
 
 // Delete đăng ký DELETE route với RBAC theo Core pattern
-func Delete(group fiber.Router, path string, businessName string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
+func Delete(group fiber.Router, path string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
 	roles, accessType := roleExp()
 	route := Route{
 		Path:       getFullPath(group, path),
@@ -112,7 +109,6 @@ func Delete(group fiber.Router, path string, businessName string, roleExp RoleEx
 		IsPrivate:  isPrivate,
 		Roles:      roles,
 		AccessType: accessType,
-		Name:       businessName,
 	}
 
 	if isPrivate {
@@ -124,7 +120,7 @@ func Delete(group fiber.Router, path string, businessName string, roleExp RoleEx
 }
 
 // Patch đăng ký PATCH route với RBAC theo Core pattern
-func Patch(group fiber.Router, path string, businessName string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
+func Patch(group fiber.Router, path string, roleExp RoleExp, isPrivate bool, handler fiber.Handler) {
 	roles, accessType := roleExp()
 	route := Route{
 		Path:       getFullPath(group, path),
@@ -132,7 +128,6 @@ func Patch(group fiber.Router, path string, businessName string, roleExp RoleExp
 		IsPrivate:  isPrivate,
 		Roles:      roles,
 		AccessType: accessType,
-		Name:       businessName,
 	}
 
 	if isPrivate {

@@ -41,7 +41,7 @@ func CreateAdminRoleAndAssign(db *gorm.DB, userID string) error {
 						RuleID: rule.ID,
 					}
 					if err := tx.Create(&assignment).Error; err != nil {
-						return fmt.Errorf("failed to assign rule %s to admin role: %v", rule.Name, err)
+						return fmt.Errorf("failed to assign rule to admin role")
 					}
 				} else {
 					return fmt.Errorf("error checking role-rule assignment: %v", err)
@@ -98,9 +98,9 @@ func GetUserPermissions(db *gorm.DB, userID string) ([]string, error) {
 		return nil, fmt.Errorf("failed to get user permissions: %v", err)
 	}
 
-	// Extract rule names
+	// Extract resource and action combinations
 	for _, rule := range rules {
-		permissions = append(permissions, rule.Name)
+		permissions = append(permissions, fmt.Sprintf("%s %s", rule.Method, rule.Path))
 	}
 
 	return permissions, nil
