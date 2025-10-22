@@ -24,16 +24,18 @@ type CustomerAchievement struct {
 	UnlockedAt    time.Time `json:"unlocked_at"`
 }
 
-// CustomerSubscription đại diện cho đăng ký của khách hàng
 type CustomerSubscription struct {
-	ID             string     `gorm:"primaryKey;size:12" json:"id"`
-	CustomerID     string     `gorm:"size:50;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"` // Updated to match Customer.ID size
-	SubscriptionID string     `gorm:"size:20;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subscription_id"`
-	StartDate      time.Time  `json:"start_date"`
-	EndDate        *time.Time `json:"end_date"`
-	IsActive       bool       `gorm:"default:true" json:"is_active"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	ExpiredAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ID               string     `gorm:"primaryKey;size:12" json:"id"`
+	CustomerID       string     `gorm:"size:50;index;not null" json:"customer_id"`
+	SubscriptionID   string     `gorm:"size:12;index;not null" json:"subscription_id"`
+	PaymentID        *string    `gorm:"size:12;index" json:"payment_id"`
+	StartDate        time.Time  `gorm:"not null" json:"start_date"`
+	EndDate          *time.Time `json:"end_date"`
+	IsActive         bool       `gorm:"default:true" json:"is_active"`
+	AutoRenew        bool       `gorm:"default:false" json:"auto_renew"` // nếu là IAP có gia hạn
+	CanceledAt       *time.Time `json:"canceled_at"`
+	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type UpdateCustomerStatisticsRequest struct {

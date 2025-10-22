@@ -1,6 +1,53 @@
-# Mobile RBAC Strategy: Microservices Architecture Permission Model
+# Mobile RBAC Strategy: Enhanced Permission Control Model
 
 ## 📋 Tổng quan kiến trúc hệ thống
+
+### 🚀 Tính năng mới: Chi tiết kiểm soát quyền từng role trên từng route
+
+Hệ thống RBAC hiện đã được nâng cấp để hỗ trợ kiểm soát chi tiết như Iris framework:
+
+#### 🎛️ Các loại permission control:
+- **Allow(roles...)**: Chỉ cho phép các role cụ thể
+- **AllowAll()**: Cho phép tất cả role đã đăng nhập
+- **Forbid(roles...)**: Cấm các role cụ thể, các role khác được phép
+- **ForbidAll()**: Cấm tất cả role (maintenance mode)
+
+#### 📝 Cách sử dụng mới:
+
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/techmaster-vietnam/dd_goshare/rbac"
+)
+
+func setupRoutes(app *fiber.App) {
+    api := app.Group("/api")
+
+    // 1. Chỉ cho phép admin và moderator
+    rbac.Get(api, "/admin/users", rbac.Allow(1, 2), true, adminHandler)
+
+    // 2. Cấm guest user, các role khác được phép
+    rbac.Post(api, "/content/create", rbac.Forbid(4), true, createHandler)
+
+    // 3. Cho phép tất cả user đã đăng nhập
+    rbac.Get(api, "/profile", rbac.AllowAll(), true, profileHandler)
+
+    // 4. Cấm tất cả (maintenance)
+    rbac.Delete(api, "/system/reset", rbac.ForbidAll(), true, resetHandler)
+
+    // 5. Route public (không cần đăng nhập)
+    rbac.Get(api, "/public/info", rbac.AllowAll(), false, publicHandler)
+}
+```
+
+#### � Logic kiểm tra quyền:
+
+1. **ForbidAll**: Cấm tất cả → Trả về 403
+2. **Forbid**: Nếu user role trong danh sách cấm → Trả về 403
+3. **AllowAll**: Cho phép tất cả → Tiếp tục
+4. **Allow**: Nếu user role trong danh sách cho phép → Tiếp tục, ngược lại 403
 
 ### 🏗️ Microservices Architecture
 
@@ -174,11 +221,60 @@ WHERE r.name = 'customer';
 4. **Easier Support**: Support team không cần hiểu phức tạp về roles
 5. **Scalable**: Dễ thêm features mới mà không ảnh hưởng role structure
 
+## � Best Practices cho Enhanced RBAC
+
+### 1. Ưu tiên sử dụng Allow thay vì Forbid
+```go
+// ✅ Tốt: Rõ ràng ai được phép
+rbac.Get(api, "/admin/sensitive", rbac.Allow(1), true, handler)
+
+// ❌ Tránh: Không rõ ai được phép khi có nhiều role
+rbac.Get(api, "/admin/sensitive", rbac.Forbid(2, 3, 4, 5), true, handler)
+```
+
+### 2. Sử dụng AllowAll cho route cần authentication
+```go
+// ✅ Route cần đăng nhập nhưng tất cả role đều truy cập được
+rbac.Get(api, "/profile", rbac.AllowAll(), true, profileHandler)
+
+// ✅ Route public không cần đăng nhập
+rbac.Get(api, "/public", rbac.AllowAll(), false, publicHandler)
+```
+
+### 3. ForbidAll cho maintenance mode
+```go
+// ✅ Tạm thời tắt tính năng
+rbac.Post(api, "/dangerous-action", rbac.ForbidAll(), true, handler)
+```
+
+### 4. Forbid cho loại trừ role cụ thể
+```go
+// ✅ Cấm guest, các role khác được phép
+rbac.Post(api, "/content/create", rbac.Forbid(4), true, handler)
+```
+
+### 5. Test Coverage
+```go
+// Đảm bảo test tất cả trường hợp
+func TestRolePermissions(t *testing.T) {
+    // Test Allow
+    // Test Forbid  
+    // Test AllowAll
+    // Test ForbidAll
+    // Test middleware logic
+}
+```
+
 ## 🚀 Kết luận
 
-**Khuyến nghị:** Sử dụng **Single Role** cho Customer với **Feature-based Access Control**
+**Khuyến nghị:** Sử dụng **Enhanced RBAC** với **Allow/Forbid control**
 
-- Employee: Complex RBAC với multiple roles
-- Customer: Simple RBAC với single role + subscription/feature flags
+- **Employee Backend**: Complex RBAC với Allow/Forbid/AllowAll/ForbidAll
+- **Customer Mobile**: Simple RBAC với AllowAll + subscription/feature flags
 
-Cách này giúp hệ thống vừa có tính bảo mật cao (RBAC cho employee) vừa có UX đơn giản (single role cho customer).
+### Migration từ hệ thống cũ:
+1. Đăng ký route qua rbac.Get/Post/... thay vì app.Get/Post/...
+2. Thêm permission control: Allow(), Forbid(), AllowAll(), ForbidAll()
+3. Route sẽ tự động được kiểm tra quyền qua middleware
+
+Cách này giúp hệ thống vừa có **kiểm soát chi tiết** (Allow/Forbid) vừa có **hiệu suất cao** (in-memory check).

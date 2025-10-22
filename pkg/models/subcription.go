@@ -1,13 +1,17 @@
 package models
 
-// Subscription đại diện cho gói đăng ký
+import "time"
+
 type Subscription struct {
-	ID          string         `gorm:"primaryKey;size:12" json:"id"`
-	Name        string         `gorm:"size:100" json:"name"`
-	Description string         `json:"description"`
-	Price       float64        `gorm:"type:numeric(10,2);default:0.0" json:"price"`
-	Duration    string         `gorm:"size:50" json:"duration"`
+	ID          string    `gorm:"primaryKey;size:12" json:"id"`
+	Name        string    `gorm:"size:100;not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"`
+	Price       float64   `gorm:"type:numeric(10,2);default:0.0" json:"price"`
+	Duration    string    `gorm:"size:50;not null" json:"duration"` // ví dụ: "monthly", "yearly"
+	IsActive    bool      `gorm:"default:true" json:"is_active"`    // ẩn/hiện gói
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
+
 
 // TableName chỉ định tên bảng cho Subscription
 func (Subscription) TableName() string {

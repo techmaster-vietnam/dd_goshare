@@ -25,84 +25,178 @@ func CheckPermissionMiddleware() fiber.Handler {
 		// Normalize route key
 		routeKey := method + " " + route
 
-		// Check if route is unassigned and config allows public access
-		if config.MakeUnassignedRoutePublic {
-			if _, exists := routesRoles[routeKey]; !exists {
-				log.Printf("DEBUG RBAC: Unassigned route, allowing access")
+		// Kiểm tra xem route có được đăng ký với RBAC không
+		registeredRoute, exists := routesRoles[routeKey]
+		if exists {
+			log.Printf("DEBUG RBAC: Found registered route with access type: %s", registeredRoute.AccessType)
+
+			// Nếu là public route, cho phép truy cập
+			if !registeredRoute.IsPrivate {
+				log.Printf("DEBUG RBAC: Route is public, allowing access")
+				return c.Next()
+			}
+
+			// Kiểm tra quyền dựa trên AccessType và Roles
+			return checkRoleBasedAccess(c, registeredRoute)
+		}
+
+		// Fallback về cách cũ: kiểm tra từ DB
+		log.Printf("DEBUG RBAC: Route not registered, falling back to DB check")
+		return checkDatabaseBasedAccess(c, route, method)
+	}
+}
+
+// checkRoleBasedAccess kiểm tra quyền dựa trên AllowRoles, ForbidRoles từ route registration
+func checkRoleBasedAccess(c *fiber.Ctx, registeredRoute Route) error {
+	// Get user roles from context
+	userRoles := getUserRolesFromContext(c)
+	log.Printf("DEBUG RBAC: User roles: %v", userRoles)
+
+	if len(userRoles) == 0 {
+		log.Printf("DEBUG RBAC: No user roles found, denying access")
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn chưa đăng nhập",
+		})
+	}
+
+	// Check admin privilege first (admin bypasses all checks)
+	if checkAdmin(userRoles) {
+		log.Printf("DEBUG RBAC: Admin user, allowing access")
+		return c.Next()
+	}
+
+	// Kiểm tra quyền dựa trên AccessType
+	switch registeredRoute.AccessType {
+	case FORBID_ALL:
+		log.Printf("DEBUG RBAC: Route has FORBID_ALL, denying access")
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"error":   "Tác vụ này bị cấm cho tất cả người dùng",
+		})
+
+	case FORBID:
+		// Kiểm tra nếu user có role bị cấm
+		for userRole := range userRoles {
+			if roleStatus, exists := registeredRoute.Roles[userRole]; exists && roleStatus == false {
+				log.Printf("DEBUG RBAC: User role %d is forbidden", userRole)
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bạn không có quyền thực hiện tác vụ này",
+				})
+			}
+		}
+		log.Printf("DEBUG RBAC: User roles not in forbid list, allowing access")
+		return c.Next()
+
+	case ALLOW_ALL:
+		log.Printf("DEBUG RBAC: Route has ALLOW_ALL, allowing access")
+		return c.Next()
+
+	case ALLOW:
+		// Kiểm tra nếu user có ít nhất 1 role được phép
+		for userRole := range userRoles {
+			if roleStatus, exists := registeredRoute.Roles[userRole]; exists && roleStatus == true {
+				log.Printf("DEBUG RBAC: User role %d is allowed", userRole)
 				return c.Next()
 			}
 		}
+		log.Printf("DEBUG RBAC: User roles not in allow list, denying access")
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn không có quyền thực hiện tác vụ này",
+		})
 
-		// Get user roles from context
-		userRoles := getUserRolesFromContext(c)
-		log.Printf("DEBUG RBAC: User roles: %v", userRoles)
-
-		if len(userRoles) == 0 {
-			log.Printf("DEBUG RBAC: No user roles found, denying access")
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"success": false,
-				"error":   "Bạn chưa đăng nhập",
-			})
-		}
-
-		// Check admin privilege first (admin bypasses all checks)
-		if checkAdmin(userRoles) {
-			log.Printf("DEBUG RBAC: Admin user, allowing access")
-			return c.Next()
-		}
-
-		// Lấy rule từ DB theo path + method
-		db, ok := c.Locals("db").(*gorm.DB)
-		if !ok || db == nil {
-			log.Printf("DEBUG RBAC: DB not found in context")
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"success": false,
-				"error":   "Không thể kiểm tra quyền (DB missing)",
-			})
-		}
-		var rule struct {
-			ID        int
-			IsPrivate bool
-		}
-		log.Printf("DEBUG RBAC: Querying DB for rule with path='%s', method='%s'", route, method)
-		err := db.Table("rules").Select("id, is_private").Where("path = ? AND method = ?", route, method).First(&rule).Error
-		if err != nil {
-			log.Printf("DEBUG RBAC: Rule not found for %s %s (path='%s', method='%s')", method, route, route, method)
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"success": false,
-				"error":   "Bạn không có quyền thực hiện tác vụ này",
-			})
-		}
-		log.Printf("DEBUG RBAC: Found rule in DB: id=%d, is_private=%v", rule.ID, rule.IsPrivate)
-		if !rule.IsPrivate {
-			log.Printf("DEBUG RBAC: Route is public in DB, allow access")
-			return c.Next()
-		}
-		// Nếu private, kiểm tra role như cũ
-		allowedRoles := getRolesForRoute(route, method)
-		if len(allowedRoles) == 0 {
-			log.Printf("DEBUG RBAC: No allowed roles found for %s %s", method, route)
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"success": false,
-				"error":   "Bạn không có quyền thực hiện tác vụ này",
-			})
-		}
-		convertedRoles := make(pmodel.Roles)
-		for k, v := range allowedRoles {
-			if v {
-				convertedRoles[k] = true
-			}
-		}
-		if checkUserRouteRoleIntersect(userRoles, convertedRoles) {
-			log.Printf("DEBUG RBAC: Permission granted for %s %s", method, route)
-			return c.Next()
-		}
-		log.Printf("DEBUG RBAC: Permission denied for %s %s", method, route)
+	default:
+		// Mặc định deny nếu không có rule rõ ràng
+		log.Printf("DEBUG RBAC: Unknown access type %s, denying access", registeredRoute.AccessType)
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"success": false,
 			"error":   "Bạn không có quyền thực hiện tác vụ này",
 		})
 	}
+}
+
+// checkDatabaseBasedAccess là logic cũ kiểm tra từ database
+func checkDatabaseBasedAccess(c *fiber.Ctx, route string, method string) error {
+	// Check if route is unassigned and config allows public access
+	routeKey := method + " " + route
+	if config.MakeUnassignedRoutePublic {
+		if _, exists := routesRoles[routeKey]; !exists {
+			log.Printf("DEBUG RBAC: Unassigned route, allowing access")
+			return c.Next()
+		}
+	}
+
+	// Get user roles from context
+	userRoles := getUserRolesFromContext(c)
+	log.Printf("DEBUG RBAC: User roles: %v", userRoles)
+
+	if len(userRoles) == 0 {
+		log.Printf("DEBUG RBAC: No user roles found, denying access")
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn chưa đăng nhập",
+		})
+	}
+
+	// Check admin privilege first (admin bypasses all checks)
+	if checkAdmin(userRoles) {
+		log.Printf("DEBUG RBAC: Admin user, allowing access")
+		return c.Next()
+	}
+
+	// Lấy rule từ DB theo path + method
+	db, ok := c.Locals("db").(*gorm.DB)
+	if !ok || db == nil {
+		log.Printf("DEBUG RBAC: DB not found in context")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   "Không thể kiểm tra quyền (DB missing)",
+		})
+	}
+	var rule struct {
+		ID        int
+		IsPrivate bool
+	}
+	log.Printf("DEBUG RBAC: Querying DB for rule with path='%s', method='%s'", route, method)
+	err := db.Table("rules").Select("id, is_private").Where("path = ? AND method = ?", route, method).First(&rule).Error
+	if err != nil {
+		log.Printf("DEBUG RBAC: Rule not found for %s %s (path='%s', method='%s')", method, route, route, method)
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn không có quyền thực hiện tác vụ này",
+		})
+	}
+	log.Printf("DEBUG RBAC: Found rule in DB: id=%d, is_private=%v", rule.ID, rule.IsPrivate)
+	if !rule.IsPrivate {
+		log.Printf("DEBUG RBAC: Route is public in DB, allow access")
+		return c.Next()
+	}
+	// Nếu private, kiểm tra role như cũ
+	allowedRoles := getRolesForRoute(route, method)
+	if len(allowedRoles) == 0 {
+		log.Printf("DEBUG RBAC: No allowed roles found for %s %s", method, route)
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn không có quyền thực hiện tác vụ này",
+		})
+	}
+	convertedRoles := make(pmodel.Roles)
+	for k, v := range allowedRoles {
+		if v {
+			convertedRoles[k] = true
+		}
+	}
+	if checkUserRouteRoleIntersect(userRoles, convertedRoles) {
+		log.Printf("DEBUG RBAC: Permission granted for %s %s", method, route)
+		return c.Next()
+	}
+	log.Printf("DEBUG RBAC: Permission denied for %s %s", method, route)
+	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+		"success": false,
+		"error":   "Bạn không có quyền thực hiện tác vụ này",
+	})
 }
 
 // // Dummy các hàm dưới đây, bạn cần triển khai thực tế
