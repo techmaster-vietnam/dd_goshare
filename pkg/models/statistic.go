@@ -10,11 +10,8 @@ type CustomerStatistics struct {
 	CustomerID              string     `gorm:"size:12;uniqueIndex" json:"customer_id"`
 	TotalDialogsCompleted   int        `gorm:"default:0" json:"total_dialogs_completed"`
 	TotalExercisesCompleted int        `gorm:"default:0" json:"total_exercises_completed"`
-	TotalTimeSpent          int        `gorm:"default:0" json:"total_time_spent"`
-	TotalScore              int        `gorm:"default:0" json:"total_score"`
-	LastActive              *time.Time `json:"last_active"`
-	CreatedAt               time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt               time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	Streak                  int        `gorm:"default:0" json:"streak"`
+	Score                   int        `gorm:"default:0" json:"score"`
 }
 
 // DialogStatistics đại diện cho thống kê hội thoại
