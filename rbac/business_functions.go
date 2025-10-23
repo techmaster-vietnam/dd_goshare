@@ -94,13 +94,14 @@ import (
 // }
 
 func RequireRoute(path string, method string) RoleExp {
-	return func() (pmodel.Roles, string) {
+	return func() (pmodel.Roles, int) {
 		allowedRoles := getRolesForRoute(path, method)
 		mapRoles := make(pmodel.Roles)
 		for roleID := range allowedRoles {
 			mapRoles[roleID] = true
 		}
-		return mapRoles, fmt.Sprintf("%s %s", method, path)
+		// Default to Allow for RequireRoute (can be adjusted as needed)
+		return mapRoles, 1 // models.Allow
 	}
 }
 
@@ -161,13 +162,12 @@ func getRolesForRoute(path string, method string) map[int]bool {
 // }
 
 // RegisterBusinessRoute đăng ký route với kiểm tra quyền từ database
-func RegisterBusinessRoute(group fiber.Router, method, path string, isPrivate bool, handler fiber.Handler) {
+// Cho phép truyền vào hàm kiểm tra quyền (RoleExp) khi đăng ký route
+func RegisterBusinessRoute(group fiber.Router, method, path string, isPrivate bool, exp RoleExp, handler fiber.Handler) {
 	log.Printf("🔍 RegisterBusinessRoute called for %s %s (private: %v)", method, path, isPrivate)
 	log.Printf("🔍 Current Roles map at route registration: %v", Roles)
 
-	exp := RequireRoute(path, method)
-
-	// ✅ THÊM: Track fresh routes từ code
+	// ✅ Track fresh routes từ code
 	serviceValue := "dd_backend" // Default fallback
 	if config.Service != "" {
 		serviceValue = config.Service

@@ -10,7 +10,7 @@ import (
 )
 
 // RoleExp là biểu thức phân quyền động theo Core pattern
-type RoleExp func() (pmodel.Roles, string)
+type RoleExp func() (pmodel.Roles, int)
 
 // assignRoles gán role vào route và path theo Core pattern
 func assignRoles(route Route) {
@@ -20,6 +20,9 @@ func assignRoles(route Route) {
 
 	routeKey := route.Method + " " + route.Path
 	routesRoles[routeKey] = route
+
+	// ✅ IMPORTANT: Add to freshRoutes so RegisterRulesToDB can sync to DB
+	freshRoutes[routeKey] = route
 
 	// Store by path for debugging
 	if _, ok := pathsRoles[route.Path]; !ok {
@@ -152,15 +155,9 @@ func Any(group fiber.Router, path string, businessName string, roleExp RoleExp, 
 			IsPrivate:  isPrivate,
 			Roles:      roles,
 			AccessType: accessType,
-			Name:       businessName,
 		}
 		assignRoles(route)
 	}
-	// getBusinessFunctionName extracts the business function name from roles map if present
-	// The function getBusinessFunctionName is no longer needed and has been removed.
-	// func getBusinessFunctionName(roles pmodel.Roles) string {
-	//       return ""
-	// }
 
 	group.All(path, handler)
 }

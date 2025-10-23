@@ -6,7 +6,7 @@ import (
 	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
 	"gorm.io/gorm"
 )
-
+// hàm này sẽ tạo role admin và gán tất cả các rule hiện có cho role này, sau đó gán role admin cho user đầu tiên tạo tài khoản
 func CreateAdminRoleAndAssign(db *gorm.DB, userID string) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		// 1. Create admin role if not exists

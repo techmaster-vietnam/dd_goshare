@@ -7,7 +7,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
-	"gorm.io/gorm/clause"
 )
 
 // BuildPublicRoutes tự động phát hiện public routes từ registered routes (theo Core pattern)
@@ -33,23 +32,27 @@ func BuildPublicRoutes(app *fiber.App) {
 	log.Printf("Built %d public routes from %d total routes", publicCount, len(routes))
 }
 
-// RegisterRulesToDB tự động insert các routes as rules vào database
+// RegisterRulesToDB tự động tạo rules từ routes đã đăng ký trong code
 func RegisterRulesToDB() error {
 	db := GetDB()
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
+	log.Printf("DEBUG: freshRoutes count: %d", len(freshRoutes))
+
 	var rules []models.Rule
 
 	// ✅ DÙNG freshRoutes thay vì routesRoles để chỉ register routes từ code hiện tại
-	for _, route := range freshRoutes {
+	for routeKey, route := range freshRoutes {
+		log.Printf("DEBUG: Processing route: %s -> %+v", routeKey, route)
 		rule := models.Rule{
 			// Name sẽ được set qua API, không auto-sync từ code
 			Path:       route.Path,
 			Method:     route.Method,
 			IsPrivate:  route.IsPrivate,
 			Service:    config.Service,
+			AccessType: route.AccessType, // ✅ Thêm access_type từ code
 		}
 		rules = append(rules, rule)
 	}
@@ -59,19 +62,34 @@ func RegisterRulesToDB() error {
 		return nil
 	}
 
-	// Sử dụng ON CONFLICT DO UPDATE để cập nhật access_type, is_private, name nếu rule đã tồn tại
-	result := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "path"}, {Name: "method"}, {Name: "service"}},
-		DoNothing:       true,
-	}).Create(&rules)
-	if result.Error != nil {
-		return fmt.Errorf("failed to register rules: %w", result.Error)
+	log.Printf("DEBUG: Will register %d rules to DB", len(rules))
+
+	// ✅ Use UPSERT but preserve user customizations
+	for _, rule := range rules {
+		var existingRule models.Rule
+		result := db.Where("path = ? AND method = ? AND service = ?", rule.Path, rule.Method, rule.Service).First(&existingRule)
+
+		if result.Error != nil {
+			// Rule doesn't exist, create new one with code defaults
+			if err := db.Create(&rule).Error; err != nil {
+				return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+			}
+			log.Printf("DEBUG: Created new rule: %s %s", rule.Method, rule.Path)
+		} else {
+			// Rule exists, only update safe fields that won't override user customizations
+			updates := map[string]interface{}{
+				"is_private": rule.IsPrivate,
+				// NOTE: Do NOT update access_type - preserve user customizations
+			}
+			if err := db.Model(&existingRule).Updates(updates).Error; err != nil {
+				return fmt.Errorf("failed to update rule %s %s: %w", rule.Method, rule.Path, err)
+			}
+			log.Printf("DEBUG: Updated existing rule: %s %s (preserved access_type)", rule.Method, rule.Path)
+		}
 	}
 
-	log.Printf("Registered %d rules to database (inserted or updated)", len(rules))
-
-	// Now need to associate roles with rules
-	return associateRolesWithRules()
+	log.Printf("DEBUG: Successfully synced %d rules to DB", len(rules))
+	return nil
 }
 
 // associateRolesWithRules associates roles with rules in rule_roles table
@@ -87,33 +105,39 @@ func associateRolesWithRules() error {
 		return fmt.Errorf("failed to fetch rules: %w", err)
 	}
 
-	// Create rule-role associations
+	// Delete existing associations for this service
+	db.Where("rule_id IN (SELECT id FROM rules WHERE service = ?)", config.Service).Delete(&models.RuleRole{})
+
+	// Create rule-role associations from freshRoutes
 	var ruleRoles []models.RuleRole
 
 	for _, rule := range dbRules {
 		routeKey := rule.Method + " " + rule.Path
-		if route, exists := routesRoles[routeKey]; exists {
-			for roleID, allowed := range route.Roles {
-				if allowed.(bool) {
-					ruleRoles = append(ruleRoles, models.RuleRole{
-						RuleID: rule.ID,
-						RoleID: roleID,
-					})
+		if route, exists := freshRoutes[routeKey]; exists {
+			// Chỉ tạo associations cho access_type = Allow hoặc Forbid
+			// AllowAll và ForbidAll không cần role associations
+			if route.AccessType == models.Allow || route.AccessType == models.Forbid {
+				for roleID, allowed := range route.Roles {
+					if allowed != nil { // Chỉ tạo association cho roles được specify
+						ruleRoles = append(ruleRoles, models.RuleRole{
+							RuleID: rule.ID,
+							RoleID: roleID,
+						})
+					}
 				}
 			}
 		}
 	}
 
 	if len(ruleRoles) > 0 {
-		// Delete existing associations for this service
-		db.Where("rule_id IN (SELECT id FROM rules WHERE service = ?)", config.Service).Delete(&models.RuleRole{})
-
 		// Insert new associations
 		if err := db.Create(&ruleRoles).Error; err != nil {
 			return fmt.Errorf("failed to create rule-role associations: %w", err)
 		}
 
 		log.Printf("Created %d rule-role associations", len(ruleRoles))
+	} else {
+		log.Println("No rule-role associations to create")
 	}
 
 	return nil
@@ -126,17 +150,33 @@ func SyncRolesWithDB(defaultRoles []string) error {
 		return fmt.Errorf("database not initialized")
 	}
 
+	// Map role names to specific IDs to match code expectations
+	roleMap := map[string]int{
+		"admin":     1,
+		"moderator": 2,
+		"user":      3,
+		"guest":     4,
+	}
+
 	createdCount := 0
 
 	for _, roleName := range defaultRoles {
+		roleNameLower := strings.ToLower(roleName)
+		roleID, exists := roleMap[roleNameLower]
+		if !exists {
+			log.Printf("Warning: Role %s not in predefined role map, skipping", roleName)
+			continue
+		}
+
 		var existingRole models.Role
-		result := db.Where("name = ?", strings.ToLower(roleName)).First(&existingRole)
+		result := db.Where("id = ? OR name = ?", roleID, roleNameLower).First(&existingRole)
 
 		if result.Error != nil {
 			if result.Error.Error() == "record not found" {
 				// Role doesn't exist, create it
 				newRole := models.Role{
-					Name:        strings.ToLower(roleName),
+					ID:          roleID,
+					Name:        roleNameLower,
 					Description: fmt.Sprintf("Default %s role", roleName),
 				}
 
@@ -145,10 +185,12 @@ func SyncRolesWithDB(defaultRoles []string) error {
 				}
 
 				createdCount++
-				log.Printf("Created default role: %s", roleName)
+				log.Printf("Created default role: %s (ID: %d)", roleNameLower, roleID)
 			} else {
 				return fmt.Errorf("error checking role %s: %w", roleName, result.Error)
 			}
+		} else {
+			log.Printf("Role %s already exists (ID: %d)", roleNameLower, existingRole.ID)
 		}
 	}
 
@@ -259,9 +301,11 @@ func CleanupObsoleteRules() error {
 	// Tìm các rule không còn trong fresh code
 	var obsoleteIDs []int64
 	for _, rule := range dbRules {
-		key := rule.Method + "|" + rule.Path + "|" + rule.Service
-		log.Println("[RBAC CLEANUP] DB rule key:", key)
-		if _, ok := current[key]; !ok {
+		// ✅ Sử dụng format key giống với freshRoutes: "method path"
+		freshKey := rule.Method + " " + rule.Path
+		dbKey := rule.Method + "|" + rule.Path + "|" + rule.Service
+		log.Println("[RBAC CLEANUP] DB rule key:", dbKey)
+		if _, ok := current[freshKey]; !ok {
 			log.Printf("[RBAC CLEANUP] Obsolete rule: id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
 			obsoleteIDs = append(obsoleteIDs, rule.ID)
 		} else {

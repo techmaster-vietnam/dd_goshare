@@ -59,8 +59,7 @@ type Route struct {
 	Method     string
 	IsPrivate  bool
 	Roles      pmodel.Roles
-	AccessType string
-	Name       string // Business function name (e.g., "dialog.create")
+	AccessType int
 }
 
 // Cấu trúc dùng để lưu thông tin của một rule
@@ -69,7 +68,7 @@ type Rule struct {
 	Method     string
 	IsPrivate  bool
 	Name       string
-	AccessType string
+	AccessType int
 	Service    string
 }
 
@@ -135,22 +134,23 @@ func LoadRulesFromDB() error {
 	}
 
 	type RuleWithRoles struct {
-		ID        int    `json:"id"`
-		Path      string `json:"path"`
-		Method    string `json:"method"`
-		IsPrivate bool   `json:"is_private"`
-		Service   string `json:"service"`
-		RoleIDs   string `json:"role_ids"`
+		ID         int    `json:"id"`
+		Path       string `json:"path"`
+		Method     string `json:"method"`
+		IsPrivate  bool   `json:"is_private"`
+		Service    string `json:"service"`
+		AccessType int    `json:"access_type"`
+		RoleIDs    string `json:"role_ids"`
 	}
 
 	var rules []RuleWithRoles
 	query := `
-	SELECT r.id, r.path, r.method, r.is_private, r.service,
+	SELECT r.id, r.path, r.method, r.is_private, r.service, r.access_type,
        STRING_AGG(rr.role_id::text, ',') as role_ids
 	FROM rules r
 	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
 	WHERE r.service = 'dd_backend' OR r.service = ''
-	GROUP BY r.id, r.path, r.method
+	GROUP BY r.id, r.path, r.method, r.access_type
 	`
 
 	if err := database.Raw(query).Scan(&rules).Error; err != nil {
@@ -163,10 +163,29 @@ func LoadRulesFromDB() error {
 
 	for _, rule := range rules {
 		route := Route{
-			Path:      rule.Path,
-			Method:    strings.ToUpper(rule.Method),
-			IsPrivate: rule.IsPrivate,
-			Roles:     make(pmodel.Roles),
+			Path:       rule.Path,
+			Method:     strings.ToUpper(rule.Method),
+			IsPrivate:  rule.IsPrivate,
+			AccessType: rule.AccessType,
+			Roles:      make(pmodel.Roles),
+		}
+
+		// Parse role IDs và add vào Roles map
+		if rule.RoleIDs != "" {
+			roleIDStrs := strings.Split(rule.RoleIDs, ",")
+			for _, roleIDStr := range roleIDStrs {
+				roleID := parseInt(roleIDStr)
+				if roleID > 0 {
+					// Với access_type = Forbid: role bị cấm (false)
+					// Với access_type = Allow, AllowAll, ForbidAll: role được phép (true)
+					switch rule.AccessType {
+					case 2: // Forbid
+						route.Roles[roleID] = false
+					default:
+						route.Roles[roleID] = true
+					}
+				}
+			}
 		}
 
 		routeKey := route.Method + " " + route.Path
