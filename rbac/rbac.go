@@ -135,22 +135,23 @@ func LoadRulesFromDB() error {
 	}
 
 	type RuleWithRoles struct {
-		ID        int    `json:"id"`
-		Path      string `json:"path"`
-		Method    string `json:"method"`
-		IsPrivate bool   `json:"is_private"`
-		Service   string `json:"service"`
-		RoleIDs   string `json:"role_ids"`
+		ID         int    `json:"id"`
+		Path       string `json:"path"`
+		Method     string `json:"method"`
+		IsPrivate  bool   `json:"is_private"`
+		Service    string `json:"service"`
+		AccessType string `json:"access_type"`
+		RoleIDs    string `json:"role_ids"`
 	}
 
 	var rules []RuleWithRoles
 	query := `
-	SELECT r.id, r.path, r.method, r.is_private, r.service,
+	SELECT r.id, r.path, r.method, r.is_private, r.service, r.access_type,
        STRING_AGG(rr.role_id::text, ',') as role_ids
 	FROM rules r
 	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
 	WHERE r.service = 'dd_backend' OR r.service = ''
-	GROUP BY r.id, r.path, r.method
+	GROUP BY r.id, r.path, r.method, r.access_type
 	`
 
 	if err := database.Raw(query).Scan(&rules).Error; err != nil {
@@ -163,10 +164,29 @@ func LoadRulesFromDB() error {
 
 	for _, rule := range rules {
 		route := Route{
-			Path:      rule.Path,
-			Method:    strings.ToUpper(rule.Method),
-			IsPrivate: rule.IsPrivate,
-			Roles:     make(pmodel.Roles),
+			Path:       rule.Path,
+			Method:     strings.ToUpper(rule.Method),
+			IsPrivate:  rule.IsPrivate,
+			AccessType: rule.AccessType,
+			Roles:      make(pmodel.Roles),
+		}
+
+		// Parse role IDs và add vào Roles map
+		if rule.RoleIDs != "" {
+			roleIDStrs := strings.Split(rule.RoleIDs, ",")
+			for _, roleIDStr := range roleIDStrs {
+				roleID := parseInt(roleIDStr)
+				if roleID > 0 {
+					// Với access_type = "allow": role được phép (true)
+					// Với access_type = "forbid": role bị cấm (false)
+					switch rule.AccessType {
+					case "forbid":
+						route.Roles[roleID] = false
+					default: // "allow", "allow_all", "forbid_all" hoặc empty
+						route.Roles[roleID] = true
+					}
+				}
+			}
 		}
 
 		routeKey := route.Method + " " + route.Path

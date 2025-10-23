@@ -16,7 +16,7 @@ func RefreshRoles() error {
 
 // RefreshRules reloads rules from the database
 func RefreshRules() error {
-	return LoadRules()
+	return LoadRulesFromDB() // ✅ Gọi hàm đúng để update routesRoles
 }
 
 var db *gorm.DB

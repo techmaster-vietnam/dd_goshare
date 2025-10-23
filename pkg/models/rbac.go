@@ -8,7 +8,7 @@ type Role struct {
 	Description string `gorm:"size:255" json:"description,omitempty"`
 
 	// Relationships
-	Rules    []Rule `gorm:"many2many:rule_roles;" json:"rules,omitempty"`
+	Rules []Rule `gorm:"many2many:rule_roles;" json:"rules,omitempty"`
 }
 
 // TableName specifies the table name for Role model
@@ -22,6 +22,7 @@ type Rule struct {
 	Method     string `gorm:"size:10;not null;uniqueIndex:idx_rule_unique" json:"method"`
 	IsPrivate  bool   `gorm:"index" json:"is_private"`
 	Service    string `gorm:"size:50;uniqueIndex:idx_rule_unique" json:"service"`
+	AccessType string `gorm:"size:20;default:'allow'" json:"access_type"` // "allow", "forbid", "allow_all", "forbid_all"
 	// Relationships
 	Roles []Role `gorm:"many2many:rule_roles;" json:"roles,omitempty"`
 }
@@ -48,8 +49,8 @@ func (UserRole) TableName() string {
 // RuleRole liên kết rule với nhiều role, cho phép access_type riêng cho từng role trên từng rule
 // Nếu access_type là NULL thì mặc định lấy theo rule
 type RuleRole struct {
-	RuleID     int     `gorm:"primaryKey;index" json:"rule_id"`
-	RoleID     int     `gorm:"primaryKey;index" json:"role_id"`
+	RuleID int `gorm:"primaryKey;index" json:"rule_id"`
+	RoleID int `gorm:"primaryKey;index" json:"role_id"`
 
 	// Relationships
 	Rule Rule `gorm:"foreignKey:RuleID;constraint:OnDelete:CASCADE" json:"rule,omitempty"`
@@ -74,7 +75,6 @@ func (r *Rule) IsPublic() bool {
 func (r *Rule) GetRouteKey() string {
 	return r.Method + " " + r.Path
 }
-
 
 // RoleRequest dùng để validate và nhận dữ liệu tạo/cập nhật role từ API
 type RoleRequest struct {

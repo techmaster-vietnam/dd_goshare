@@ -21,6 +21,9 @@ func assignRoles(route Route) {
 	routeKey := route.Method + " " + route.Path
 	routesRoles[routeKey] = route
 
+	// ✅ IMPORTANT: Add to freshRoutes so RegisterRulesToDB can sync to DB
+	freshRoutes[routeKey] = route
+
 	// Store by path for debugging
 	if _, ok := pathsRoles[route.Path]; !ok {
 		pathsRoles[route.Path] = route
