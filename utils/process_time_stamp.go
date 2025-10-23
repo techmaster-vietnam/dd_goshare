@@ -114,6 +114,7 @@ func ProcessTimestamp(scriptPath, mfaTimestampPath, outputPath string) error {
 	// Duyệt qua từng từ trong MFA timestamp
 	for _, entry := range mfaTimestamp.Tiers.Words.Entries {
 		startTime := int(entry[0].(float64) * 1000) // Convert to milliseconds
+		endTime := int(entry[1].(float64) * 1000)   // Convert to milliseconds
 		word := entry[2].(string)
 
 		// Skip các từ <unk> hoặc rỗng
@@ -142,6 +143,7 @@ func ProcessTimestamp(scriptPath, mfaTimestampPath, outputPath string) error {
 				// Thêm từ và timestamp vào kết quả (chỉ 3 trường: start_time, word, position)
 				result.Words = append(result.Words, []interface{}{
 					startTime,
+					endTime,
 					originalWord,
 					unicodePos,
 				})
@@ -165,7 +167,7 @@ func ProcessTimestamp(scriptPath, mfaTimestampPath, outputPath string) error {
 		// Tìm timestamp cho câu (chỉ cần t0 - thời điểm bắt đầu)
 		var t0 int
 		for _, word := range result.Words {
-			pos := word[2].(int)
+			pos := word[3].(int)
 			if pos >= startPos && pos < startPos+utf8.RuneCountInString(dialog.Say) {
 				if t0 == 0 || word[0].(int) < t0 {
 					t0 = word[0].(int)
