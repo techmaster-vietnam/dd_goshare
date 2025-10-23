@@ -283,23 +283,24 @@ func checkDatabaseBasedAccess(c *fiber.Ctx, route string, method string) error {
 			"error":   "Bạn không có quyền thực hiện tác vụ này",
 		})
 	case models.Forbid:
-		// Tất cả role được phép, trừ các role có bản ghi rule_roles (access_type NULL)
+		// Chỉ cho phép role có override allow, còn lại đều bị cấm (deny by default)
+		allowed := false
 		for userRole := range userRoles {
 			override := GetRuleRoleAccessType(db, rule.ID, userRole)
-			if override == nil {
-				var count int64
-				db.Table("rule_roles").Where("rule_id = ? AND role_id = ? AND access_type IS NULL", rule.ID, userRole).Count(&count)
-				if count > 0 {
-					log.Printf("DEBUG RBAC: User role %d is forbidden (rule forbid, role in rule_roles)", userRole)
-					return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-						"success": false,
-						"error":   "Bạn không có quyền thực hiện tác vụ này",
-					})
-				}
+			if override != nil && *override == models.Allow {
+				allowed = true
+				break
 			}
 		}
-		log.Printf("DEBUG RBAC: Permission granted for %s %s (rule forbid, role not in rule_roles)", method, route)
-		return c.Next()
+		if allowed {
+			log.Printf("DEBUG RBAC: Permission granted for %s %s (rule forbid, role override allow)", method, route)
+			return c.Next()
+		}
+		log.Printf("DEBUG RBAC: Permission denied for %s %s (rule forbid, no override allow)", method, route)
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"error":   "Bạn không có quyền thực hiện tác vụ này",
+		})
 	default:
 		log.Printf("DEBUG RBAC: Unknown access type %d, denying access", rule.AccessType)
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
