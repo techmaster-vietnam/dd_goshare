@@ -22,7 +22,7 @@ type Rule struct {
 	Method     string `gorm:"size:10;not null;uniqueIndex:idx_rule_unique" json:"method"`
 	IsPrivate  bool   `gorm:"index" json:"is_private"`
 	Service    string `gorm:"size:50;uniqueIndex:idx_rule_unique" json:"service"`
-	AccessType string `gorm:"size:20;default:'allow'" json:"access_type"` // "allow", "forbid", "allow_all", "forbid_all"
+	AccessType int    `gorm:"type:smallint;default:4" json:"access_type"` // 1: allow, 2: forbid, 3: allow_all, 4: forbid_all
 	// Relationships
 	Roles []Role `gorm:"many2many:rule_roles;" json:"roles,omitempty"`
 }
@@ -49,13 +49,22 @@ func (UserRole) TableName() string {
 // RuleRole liên kết rule với nhiều role, cho phép access_type riêng cho từng role trên từng rule
 // Nếu access_type là NULL thì mặc định lấy theo rule
 type RuleRole struct {
-	RuleID int `gorm:"primaryKey;index" json:"rule_id"`
-	RoleID int `gorm:"primaryKey;index" json:"role_id"`
+	RuleID     int  `gorm:"primaryKey;index" json:"rule_id"`
+	RoleID     int  `gorm:"primaryKey;index" json:"role_id"`
+	AccessType *int `gorm:"type:smallint;default:null" json:"access_type,omitempty"` // 1: allow, 2: forbid, NULL (mặc định lấy theo rule)
 
 	// Relationships
 	Rule Rule `gorm:"foreignKey:RuleID;constraint:OnDelete:CASCADE" json:"rule,omitempty"`
 	Role Role `gorm:"foreignKey:RoleID;constraint:OnDelete:CASCADE" json:"role,omitempty"`
 }
+
+// RBAC access_type constants
+const (
+	Allow     = 1
+	Forbid    = 2
+	AllowAll  = 3
+	ForbidAll = 4
+)
 
 // TableName specifies the table name for RuleRole model
 func (RuleRole) TableName() string {

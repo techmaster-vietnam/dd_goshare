@@ -94,13 +94,14 @@ import (
 // }
 
 func RequireRoute(path string, method string) RoleExp {
-	return func() (pmodel.Roles, string) {
+	return func() (pmodel.Roles, int) {
 		allowedRoles := getRolesForRoute(path, method)
 		mapRoles := make(pmodel.Roles)
 		for roleID := range allowedRoles {
 			mapRoles[roleID] = true
 		}
-		return mapRoles, fmt.Sprintf("%s %s", method, path)
+		// Default to Allow for RequireRoute (can be adjusted as needed)
+		return mapRoles, 1 // models.Allow
 	}
 }
 

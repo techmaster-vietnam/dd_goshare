@@ -2,6 +2,8 @@ package rbac
 
 import (
 	"testing"
+
+	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
 )
 
 func TestRBACFunctions(t *testing.T) {
@@ -17,8 +19,8 @@ func TestRBACFunctions(t *testing.T) {
 		roleExp := Allow(1, 2) // admin, moderator
 		roles, action := roleExp()
 
-		if action != ALLOW {
-			t.Errorf("Expected action %s, got %s", ALLOW, action)
+		if action != models.Allow {
+			t.Errorf("Expected action %d, got %d", models.Allow, action)
 		}
 
 		if !roles[1].(bool) {
@@ -38,8 +40,8 @@ func TestRBACFunctions(t *testing.T) {
 		roleExp := AllowAll()
 		roles, action := roleExp()
 
-		if action != ALLOW_ALL {
-			t.Errorf("Expected action %s, got %s", ALLOW_ALL, action)
+		if action != models.AllowAll {
+			t.Errorf("Expected action %d, got %d", models.AllowAll, action)
 		}
 
 		expectedRoles := []int{1, 2, 3, 4}
@@ -54,8 +56,8 @@ func TestRBACFunctions(t *testing.T) {
 		roleExp := Forbid(4) // guest
 		roles, action := roleExp()
 
-		if action != FORBID {
-			t.Errorf("Expected action %s, got %s", FORBID, action)
+		if action != models.Forbid {
+			t.Errorf("Expected action %d, got %d", models.Forbid, action)
 		}
 
 		if roles[4].(bool) {
@@ -71,8 +73,8 @@ func TestRBACFunctions(t *testing.T) {
 		roleExp := ForbidAll()
 		roles, action := roleExp()
 
-		if action != FORBID_ALL {
-			t.Errorf("Expected action %s, got %s", FORBID_ALL, action)
+		if action != models.ForbidAll {
+			t.Errorf("Expected action %d, got %d", models.ForbidAll, action)
 		}
 
 		expectedRoles := []int{1, 2, 3, 4}
@@ -98,8 +100,8 @@ func TestRoleExpCombination(t *testing.T) {
 		roleExp := Allow(1, 3)
 		roles, action := roleExp()
 
-		if action != ALLOW {
-			t.Errorf("Expected action %s, got %s", ALLOW, action)
+		if action != models.Allow {
+			t.Errorf("Expected action %d, got %d", models.Allow, action)
 		}
 
 		// Check allowed roles
@@ -124,8 +126,8 @@ func TestRoleExpCombination(t *testing.T) {
 		roleExp := Forbid(3, 4)
 		roles, action := roleExp()
 
-		if action != FORBID {
-			t.Errorf("Expected action %s, got %s", FORBID, action)
+		if action != models.Forbid {
+			t.Errorf("Expected action %d, got %d", models.Forbid, action)
 		}
 
 		// Check forbidden roles

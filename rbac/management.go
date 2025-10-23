@@ -114,9 +114,9 @@ func associateRolesWithRules() error {
 	for _, rule := range dbRules {
 		routeKey := rule.Method + " " + rule.Path
 		if route, exists := freshRoutes[routeKey]; exists {
-			// Chỉ tạo associations cho access_type = "allow" hoặc "forbid"
-			// allow_all và forbid_all không cần role associations
-			if route.AccessType == "allow" || route.AccessType == "forbid" {
+			// Chỉ tạo associations cho access_type = Allow hoặc Forbid
+			// AllowAll và ForbidAll không cần role associations
+			if route.AccessType == models.Allow || route.AccessType == models.Forbid {
 				for roleID, allowed := range route.Roles {
 					if allowed != nil { // Chỉ tạo association cho roles được specify
 						ruleRoles = append(ruleRoles, models.RuleRole{

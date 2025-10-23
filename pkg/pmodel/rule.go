@@ -6,6 +6,6 @@ type Rule struct {
 	Method     string `json:"method"`
 	Name       string `json:"name"`
 	IsPrivate  bool   `json:"is_private"`
-	AccessType string `json:"access_type"` // allow, forbid, allow_all, forbid_all
+	AccessType int    `json:"access_type"` // 1: allow, 2: forbid, 3: allow_all, 4: forbid_all
 	Roles      []int  `json:"roles"`       // Danh sách role IDs
 }

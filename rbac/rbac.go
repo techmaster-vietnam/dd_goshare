@@ -59,8 +59,7 @@ type Route struct {
 	Method     string
 	IsPrivate  bool
 	Roles      pmodel.Roles
-	AccessType string
-	Name       string // Business function name (e.g., "dialog.create")
+	AccessType int
 }
 
 // Cấu trúc dùng để lưu thông tin của một rule
@@ -69,7 +68,7 @@ type Rule struct {
 	Method     string
 	IsPrivate  bool
 	Name       string
-	AccessType string
+	AccessType int
 	Service    string
 }
 
@@ -140,7 +139,7 @@ func LoadRulesFromDB() error {
 		Method     string `json:"method"`
 		IsPrivate  bool   `json:"is_private"`
 		Service    string `json:"service"`
-		AccessType string `json:"access_type"`
+		AccessType int    `json:"access_type"`
 		RoleIDs    string `json:"role_ids"`
 	}
 
@@ -177,12 +176,12 @@ func LoadRulesFromDB() error {
 			for _, roleIDStr := range roleIDStrs {
 				roleID := parseInt(roleIDStr)
 				if roleID > 0 {
-					// Với access_type = "allow": role được phép (true)
-					// Với access_type = "forbid": role bị cấm (false)
+					// Với access_type = Forbid: role bị cấm (false)
+					// Với access_type = Allow, AllowAll, ForbidAll: role được phép (true)
 					switch rule.AccessType {
-					case "forbid":
+					case 2: // Forbid
 						route.Roles[roleID] = false
-					default: // "allow", "allow_all", "forbid_all" hoặc empty
+					default:
 						route.Roles[roleID] = true
 					}
 				}
