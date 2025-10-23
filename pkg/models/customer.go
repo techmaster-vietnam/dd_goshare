@@ -25,18 +25,20 @@ type CustomerAchievement struct {
 }
 
 type CustomerSubscription struct {
-	ID               string     `gorm:"primaryKey;size:12" json:"id"`
-	CustomerID       string     `gorm:"size:50;index;not null" json:"customer_id"`
-	SubscriptionID   string     `gorm:"size:12;index;not null" json:"subscription_id"`
-	PaymentID        *string    `gorm:"size:12;index" json:"payment_id"`
-	StartDate        time.Time  `gorm:"not null" json:"start_date"`
-	EndDate          *time.Time `json:"end_date"`
-	IsActive         bool       `gorm:"default:true" json:"is_active"`
-	AutoRenew        bool       `gorm:"default:false" json:"auto_renew"` // nếu là IAP có gia hạn
-	CanceledAt       *time.Time `json:"canceled_at"`
-	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                  string     `gorm:"primaryKey;size:12" json:"id"`
+	CustomerID          string     `gorm:"size:50;index;not null" json:"customer_id"`
+	SubscriptionID      string     `gorm:"size:12;index;not null" json:"subscription_id"`
+	PaymentID           *string    `gorm:"size:12;index" json:"payment_id"`
+	OriginalTransaction string     `gorm:"size:255;uniqueIndex" json:"original_transaction"` // định danh duy nhất cho 1 chu kỳ
+	StartDate           time.Time  `gorm:"not null" json:"start_date"`
+	EndDate             *time.Time `json:"end_date"`
+	IsActive            bool       `gorm:"default:true" json:"is_active"`
+	AutoRenew           bool       `gorm:"default:false" json:"auto_renew"`
+	CanceledAt          *time.Time `json:"canceled_at"`
+	CreatedAt           time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt           time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
+
 
 type UpdateCustomerStatisticsRequest struct {
 	TotalDialogsCompleted   *int `json:"total_dialogs_completed"`

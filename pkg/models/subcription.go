@@ -7,8 +7,8 @@ type Subscription struct {
 	Name        string    `gorm:"size:100;not null" json:"name"`
 	Description string    `gorm:"type:text" json:"description"`
 	Price       float64   `gorm:"type:numeric(10,2);default:0.0" json:"price"`
-	Duration    string    `gorm:"size:50;not null" json:"duration"` // ví dụ: "monthly", "yearly"
-	IsActive    bool      `gorm:"default:true" json:"is_active"`    // ẩn/hiện gói
+	Duration    string    `gorm:"size:50;not null" json:"duration"` // monthly, yearly
+	IsActive    bool      `gorm:"default:true" json:"is_active"`
 	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
