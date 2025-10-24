@@ -121,8 +121,10 @@ func processContent(content string) (string, []TextDialog) {
 			contentAfterSeparator = lines
 		}
 
-		// Loại bỏ các [markers] và tạo nội dung sạch
-		var cleanLines []string
+		// Loại bỏ các [markers] và tạo nội dung theo paragraph
+		var paragraphs []string
+		var currentParagraph []string
+
 		for _, line := range contentAfterSeparator {
 			// Loại bỏ tất cả các [markers] ở bất kỳ vị trí nào trong câu
 			re := regexp.MustCompile(`\[[^\]]+\]`)
@@ -137,28 +139,53 @@ func processContent(content string) (string, []TextDialog) {
 			cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
 
 			cleanLine = strings.TrimSpace(cleanLine)
-			if cleanLine != "" { // Chỉ thêm dòng không rỗng
-				cleanLines = append(cleanLines, cleanLine)
+
+			// Nếu dòng trống, kết thúc paragraph hiện tại
+			if cleanLine == "" {
+				if len(currentParagraph) > 0 {
+					paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
+					currentParagraph = []string{}
+				}
+			} else {
+				currentParagraph = append(currentParagraph, cleanLine)
 			}
 		}
 
-		// Nối tất cả các dòng thành một đoạn văn
-		fullText := strings.Join(cleanLines, " ")
-		fullText = strings.TrimSpace(fullText)
+		// Thêm paragraph cuối cùng nếu có
+		if len(currentParagraph) > 0 {
+			paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
+		}
 
-		// Phân tách thành các câu dựa trên dấu câu
-		sentences := splitIntoSentences(fullText)
+		// Nếu không có paragraph nào (không có dòng trống để phân tách), coi toàn bộ là 1 paragraph
+		if len(paragraphs) == 0 {
+			var allLines []string
+			for _, line := range contentAfterSeparator {
+				re := regexp.MustCompile(`\[[^\]]+\]`)
+				cleanLine := re.ReplaceAllString(line, "")
+				replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
+				cleanLine = replacer.Replace(cleanLine)
+				spaceRe := regexp.MustCompile(`\s+`)
+				cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
+				cleanLine = strings.TrimSpace(cleanLine)
+				if cleanLine != "" {
+					allLines = append(allLines, cleanLine)
+				}
+			}
+			if len(allLines) > 0 {
+				paragraphs = append(paragraphs, strings.Join(allLines, " "))
+			}
+		}
 
-		// Tạo dialog data cho mỗi câu với speaker là "guest"
+		// Tạo dialog data cho mỗi paragraph với speaker là "guest"
 		var processedLines []string
-		for _, sentence := range sentences {
-			sentence = strings.TrimSpace(sentence)
-			if sentence != "" {
+		for _, paragraph := range paragraphs {
+			paragraph = strings.TrimSpace(paragraph)
+			if paragraph != "" {
 				dialogData = append(dialogData, TextDialog{
 					Speaker: "guest",
-					Say:     sentence,
+					Say:     paragraph,
 				})
-				processedLines = append(processedLines, sentence)
+				processedLines = append(processedLines, paragraph)
 			}
 		}
 
@@ -215,64 +242,4 @@ func processContent(content string) (string, []TextDialog) {
 	}
 
 	return strings.Join(processedLines, "\n"), dialogData
-}
-
-// splitIntoSentences phân tách văn bản thành các câu dựa trên dấu câu
-func splitIntoSentences(text string) []string {
-	// Cách tiếp cận đơn giản: tách dựa trên dấu câu kết hợp với space
-	re := regexp.MustCompile(`([.!?]+)\s+`)
-
-	// Tìm tất cả các vị trí có dấu câu
-	matches := re.FindAllStringSubmatchIndex(text, -1)
-
-	if len(matches) == 0 {
-		// Nếu không có dấu câu, trả về toàn bộ text như một câu
-		return []string{strings.TrimSpace(text)}
-	}
-
-	var sentences []string
-	start := 0
-
-	for _, match := range matches {
-		end := match[2]          // Vị trí cuối dấu câu (không bao gồm space)
-		endWithPunct := match[3] // Vị trí sau dấu câu và space
-
-		sentence := strings.TrimSpace(text[start:end])
-
-		// Kiểm tra xem có phải là viết tắt hoặc số không
-		if len(sentence) > 0 && !isAbbreviation(sentence) {
-			sentences = append(sentences, sentence)
-			start = endWithPunct
-		} else {
-			// Nếu là viết tắt, tiếp tục không tách
-			continue
-		}
-	}
-
-	// Thêm phần còn lại nếu có
-	if start < len(text) {
-		remaining := strings.TrimSpace(text[start:])
-		if remaining != "" {
-			sentences = append(sentences, remaining)
-		}
-	}
-
-	return sentences
-}
-
-// isAbbreviation kiểm tra xem câu có kết thúc bằng viết tắt không
-func isAbbreviation(sentence string) bool {
-	// Danh sách các viết tắt thường gặp
-	abbreviations := []string{"Mr.", "Mrs.", "Dr.", "Prof.", "Inc.", "Ltd.", "Co.", "Corp.", "etc.", "vs.", "i.e.", "e.g."}
-
-	sentence = strings.TrimSpace(sentence)
-	for _, abbr := range abbreviations {
-		if strings.HasSuffix(sentence, abbr) {
-			return true
-		}
-	}
-
-	// Kiểm tra số + dấu chấm (VD: "In 1962.")
-	re := regexp.MustCompile(`\d+\.$`)
-	return re.MatchString(sentence)
 }

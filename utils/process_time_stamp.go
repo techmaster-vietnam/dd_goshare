@@ -1,245 +1,242 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
-type Text2ScriptTask struct{}
-
-type TextDialog struct {
-	Speaker string `json:"speaker"`
-	Say     string `json:"say"`
-}
-
-type DialogData struct {
-	Dialog []TextDialog `json:"dialog"`
-}
-
-func ProcessTextToScript(inputFile, outPathText, outPathJson, outPathScript string) error {
-	// Đọc file input
-	content, err := os.ReadFile(inputFile)
+func ProcessTimestamp(scriptPath, mfaTimestampPath, outputPath string) error {
+	// Đọc file kịch bản tạo dialog
+	scriptData, err := os.ReadFile(scriptPath)
 	if err != nil {
-		return fmt.Errorf("không thể đọc file input: %v", err)
+		return fmt.Errorf("không thể đọc file script: %v", err)
 	}
 
-	// Xử lý nội dung để tạo text rút gọn và dialog data
-	processedContent, dialogData := processContent(string(content))
-
-	// Tạo tên file output dựa trên tên file input
-	baseName := filepath.Base(inputFile)
-	outputTextFileName := strings.TrimSuffix(baseName, filepath.Ext(baseName)) + ".txt"
-	outputJsonFileName := strings.TrimSuffix(baseName, filepath.Ext(baseName)) + ".json"
-
-	outputTextPath := filepath.Join(outPathText, outputTextFileName)
-	outputScriptPath := filepath.Join(outPathScript, outputTextFileName)
-	outputJsonPath := filepath.Join(outPathJson, outputJsonFileName)
-
-	// Tạo thư mục output nếu chưa tồn tại
-	if err := os.MkdirAll(outPathText, 0755); err != nil {
-		return fmt.Errorf("không thể tạo thư mục output: %v", err)
+	var script struct {
+		Dialog []struct {
+			Speaker string `json:"speaker"`
+			Say     string `json:"say"`
+		} `json:"dialog"`
 	}
-	if err := os.MkdirAll(outPathJson, 0755); err != nil {
-		return fmt.Errorf("không thể tạo thư mục output: %v", err)
+	if err := json.Unmarshal(scriptData, &script); err != nil {
+		return fmt.Errorf("không thể parse file script: %v", err)
 	}
 
-	// Ghi file text output
-	if err := os.WriteFile(outputTextPath, []byte(processedContent), 0644); err != nil {
-		return fmt.Errorf("không thể ghi file text output: %v", err)
-	}
-
-	// Ghi file script output
-	if err := os.WriteFile(outputScriptPath, []byte(processedContent), 0644); err != nil {
-		return fmt.Errorf("không thể ghi file script output: %v", err)
-	}
-
-	// Ghi file JSON output
-	jsonData := DialogData{Dialog: dialogData}
-	jsonBytes, err := json.MarshalIndent(jsonData, "", "  ")
+	// Đọc file MFA timestamp
+	mfaData, err := os.ReadFile(mfaTimestampPath)
 	if err != nil {
-		return fmt.Errorf("không thể tạo JSON: %v", err)
+		return fmt.Errorf("không thể đọc file MFA timestamp: %v", err)
 	}
 
-	if err := os.WriteFile(outputJsonPath, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("không thể ghi file JSON output: %v", err)
+	var mfaTimestamp struct {
+		Tiers struct {
+			Words struct {
+				Entries [][]interface{} `json:"entries"`
+			} `json:"words"`
+		} `json:"tiers"`
+	}
+	if err := json.Unmarshal(mfaData, &mfaTimestamp); err != nil {
+		return fmt.Errorf("không thể parse file MFA timestamp: %v", err)
 	}
 
-	fmt.Printf("Đã xử lý thành công: %s -> %s và %s\n", inputFile, outputTextPath, outputJsonPath)
+	// Tạo dialog plain text và map từng từ với vị trí
+	dialogText := ""
+
+	for _, dialog := range script.Dialog {
+		// Thêm câu vào dialogPlainText
+		dialogText += dialog.Say + "\n"
+	}
+	dialogText = strings.TrimSpace(dialogText)
+
+	// Normalize tất cả các loại dấu nháy đơn thành ASCII apostrophe
+	// Sử dụng byte replacement để đảm bảo hoạt động với UTF-8
+	dialogTextBytes := []byte(dialogText)
+	// Replace UTF-8 encoded U+2019 (e2 80 99) với ASCII apostrophe (27)
+	dialogTextBytes = bytes.ReplaceAll(dialogTextBytes, []byte{0xe2, 0x80, 0x99}, []byte{0x27})
+	// Replace UTF-8 encoded U+2018 (e2 80 98) với ASCII apostrophe (27)
+	dialogTextBytes = bytes.ReplaceAll(dialogTextBytes, []byte{0xe2, 0x80, 0x98}, []byte{0x27})
+	// Replace all dashes with spaces
+	dialogTextBytes = bytes.ReplaceAll(dialogTextBytes, []byte{0x2d}, []byte{0x20})
+	// Replace em-dashes (—) with spaces - UTF-8 encoded U+2014 (e2 80 94)
+	dialogTextBytes = bytes.ReplaceAll(dialogTextBytes, []byte{0xe2, 0x80, 0x94}, []byte{0x20})
+	dialogText = string(dialogTextBytes)
+	dialogPlainText := strings.ToLower(dialogText)
+
+	// Cũng tạo một bản sao của script với các câu đã được normalize để dùng cho output
+	normalizedScript := make([]struct {
+		Speaker string
+		Say     string
+	}, len(script.Dialog))
+
+	for i, dialog := range script.Dialog {
+		// Normalize câu nói của từng dialog
+		sayBytes := []byte(dialog.Say)
+		// Replace UTF-8 encoded U+2019 (e2 80 99) với ASCII apostrophe (27)
+		sayBytes = bytes.ReplaceAll(sayBytes, []byte{0xe2, 0x80, 0x99}, []byte{0x27})
+		// Replace UTF-8 encoded U+2018 (e2 80 98) với ASCII apostrophe (27)
+		sayBytes = bytes.ReplaceAll(sayBytes, []byte{0xe2, 0x80, 0x98}, []byte{0x27})
+		// Replace all dashes with spaces
+		sayBytes = bytes.ReplaceAll(sayBytes, []byte{0x2d}, []byte{0x20})
+		// Replace em-dashes (—) with spaces - UTF-8 encoded U+2014 (e2 80 94)
+		sayBytes = bytes.ReplaceAll(sayBytes, []byte{0xe2, 0x80, 0x94}, []byte{0x20})
+
+		normalizedScript[i] = struct {
+			Speaker string
+			Say     string
+		}{
+			Speaker: dialog.Speaker,
+			Say:     string(sayBytes),
+		}
+	}
+
+	// Xử lý timestamp và tạo kết quả
+	result := struct {
+		Audio     string `json:"audio"`
+		Sentences []struct {
+			R  string `json:"r"`
+			S  string `json:"s"`
+			B  int    `json:"b"`
+			T0 int    `json:"t0"`
+		} `json:"sentence"`
+		Words [][]interface{} `json:"words"`
+	}{}
+
+	// Set audio field to the corresponding audio filename
+	scriptBaseName := strings.TrimSuffix(filepath.Base(scriptPath), filepath.Ext(scriptPath))
+	result.Audio = scriptBaseName + ".ogg"
+
+	searchPos := 0
+	// Duyệt qua từng từ trong MFA timestamp
+	for _, entry := range mfaTimestamp.Tiers.Words.Entries {
+		startTime := int(entry[0].(float64) * 1000) // Convert to milliseconds
+		endTime := int(entry[1].(float64) * 1000)   // Convert to milliseconds
+		word := entry[2].(string)
+
+		// Skip các từ <unk> hoặc rỗng
+		if word == "<unk>" || word == "" {
+			continue
+		}
+
+		// Chuyển từ MFA sang lowercase để so sánh
+		wordLower := strings.ToLower(word)
+
+		// Tìm vị trí của từ trong dialogPlainText bắt đầu từ searchPos
+		pos := strings.Index(dialogPlainText[searchPos:], wordLower)
+		if pos != -1 {
+			// Tính vị trí theo số ký tự Unicode
+			unicodePos := utf8.RuneCountInString(dialogPlainText[:searchPos+pos])
+
+			// Lấy từ gốc từ dialogText với độ dài chính xác của từ trong MFA
+			// Sử dụng rune để đảm bảo xử lý Unicode chính xác
+			dialogRunes := []rune(dialogText)
+			startRune := utf8.RuneCountInString(dialogText[:searchPos+pos])
+			endRune := startRune + utf8.RuneCountInString(wordLower)
+
+			if endRune <= len(dialogRunes) {
+				originalWord := string(dialogRunes[startRune:endRune])
+
+				// Thêm từ và timestamp vào kết quả (chỉ 3 trường: start_time, word, position)
+				result.Words = append(result.Words, []interface{}{
+					startTime,
+					endTime,
+					originalWord,
+					unicodePos,
+				})
+				// Cập nhật searchPos để tìm từ tiếp theo
+				searchPos += pos + len(wordLower)
+			}
+		}
+	}
+
+	// Xử lý sentences
+	for i, dialog := range normalizedScript {
+		// Sử dụng trực tiếp speaker name vì đã là tên nhân vật
+		roleName := dialog.Speaker
+
+		// Tính vị trí bắt đầu của câu trong dialog plain text
+		startPos := 0
+		for j := 0; j < i; j++ {
+			startPos += utf8.RuneCountInString(normalizedScript[j].Say) + 1
+		}
+
+		// Tìm timestamp cho câu (chỉ cần t0 - thời điểm bắt đầu)
+		var t0 int
+		for _, word := range result.Words {
+			pos := word[3].(int)
+			if pos >= startPos && pos < startPos+utf8.RuneCountInString(dialog.Say) {
+				if t0 == 0 || word[0].(int) < t0 {
+					t0 = word[0].(int)
+				}
+			}
+		}
+
+		result.Sentences = append(result.Sentences, struct {
+			R  string `json:"r"`
+			S  string `json:"s"`
+			B  int    `json:"b"`
+			T0 int    `json:"t0"`
+		}{
+			R:  roleName,
+			S:  dialog.Say,
+			B:  startPos,
+			T0: t0,
+		})
+	}
+
+	// Ghi kết quả ra file
+	outputData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("không thể tạo JSON output: %v", err)
+	}
+
+	if err := os.WriteFile(outputPath, outputData, 0644); err != nil {
+		return fmt.Errorf("không thể ghi file output: %v", err)
+	}
+
 	return nil
 }
 
-func processContent(content string) (string, []TextDialog) {
-	lines := strings.Split(content, "\n")
-	var processedLines []string
-	var dialogData []TextDialog
-	var foundSeparator bool
-	var hasSeparator bool
+/*
+=== XỬ LÝ CÁC TỪ VIẾT TẮT (CONTRACTIONS) VÀ DẤU GẠCH NGANG TRONG HÀM ProcessTimestamp ===
 
-	// Kiểm tra xem file có separator "---" không
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "---" {
-			hasSeparator = true
-			break
-		}
-	}
+Vấn đề:
+- File script JSON sử dụng Unicode right single quotation mark (') - U+2019 (UTF-8: e2 80 99)
+- File MFA timestamp sử dụng ASCII apostrophe (') - ASCII 27
+- Dấu gạch ngang (-) trong script có thể khác với format trong MFA timestamp
+- Điều này khiến việc matching các từ viết tắt như "don't", "we've", "I'm" và từ có dấu gạch ngang bị thất bại
 
-	// Kiểm tra xem file có format dialog (có dấu ":") không
-	var countFormat int
-	for _, line := range lines {
-		if strings.Contains(line, ":") && len(strings.SplitN(line, ":", 2)) > 1 {
-			// Kiểm tra xem có phải là dialog format thật không (không phải chỉ là dấu ":" trong câu)
-			parts := strings.SplitN(line, ":", 2)
-			speaker := strings.TrimSpace(parts[0])
-			content := strings.TrimSpace(parts[1])
+Giải pháp đã áp dụng:
 
-			if len(speaker) > 0 && len(speaker) < 50 && len(content) > 0 {
-				countFormat++
-			}
+1. NORMALIZE DẤU NHÁY VÀ DẤU GẠCH NGANG (dòng 64-74):
+   - Sử dụng byte-level replacement để chuyển đổi Unicode quotation marks thành ASCII apostrophe
+   - Replace UTF-8 encoded U+2019 (e2 80 99) → ASCII apostrophe (27)
+   - Replace UTF-8 encoded U+2018 (e2 80 98) → ASCII apostrophe (27)
+   - Replace dấu gạch ngang (-) ASCII 2d → dấu cách (space) ASCII 20
+   - Replace em-dash (—) UTF-8 encoded U+2014 (e2 80 94) → dấu cách (space) ASCII 20
 
-		}
-	}
+2. CẢI THIỆN LOGIC MATCHING (dòng 98-131):
+   - Skip các từ "<unk>" hoặc rỗng từ MFA
+   - Chuyển từ MFA sang lowercase để so sánh với dialogPlainText
+   - Sử dụng rune để xử lý Unicode chính xác khi lấy từ gốc
+   - Đảm bảo lấy từ gốc với case đúng từ dialogText (không phải lowercase)
 
-	// Nếu không có dialog format, xử lý như story với speaker mặc định là "guest"
-	if countFormat < 7 {
-		// Xử lý separator nếu có
-		var contentAfterSeparator []string
-		if hasSeparator {
-			for _, line := range lines {
-				if strings.TrimSpace(line) == "---" {
-					foundSeparator = true
-					continue
-				}
-				if foundSeparator {
-					contentAfterSeparator = append(contentAfterSeparator, line)
-				}
-			}
-		} else {
-			contentAfterSeparator = lines
-		}
+3. XỬ LÝ UNICODE (dòng 114-117):
+   - Sử dụng utf8.RuneCountInString() để tính vị trí Unicode chính xác
+   - Chuyển dialogText thành []rune để slice theo ký tự Unicode
+   - Đảm bảo độ dài từ được tính theo Unicode characters, không phải bytes
 
-		// Loại bỏ các [markers] và tạo nội dung theo paragraph
-		var paragraphs []string
-		var currentParagraph []string
+Kết quả:
+- Tất cả các từ viết tắt như "we've", "don't", "I'm", "let's", "it's" đều được xử lý thành công
+- Timestamp được gán chính xác cho từng từ viết tắt
+- Giữ nguyên case gốc của từ trong output (VD: "I'm" không phải "i'm")
 
-		for _, line := range contentAfterSeparator {
-			// Loại bỏ tất cả các [markers] ở bất kỳ vị trí nào trong câu
-			re := regexp.MustCompile(`\[[^\]]+\]`)
-			cleanLine := re.ReplaceAllString(line, "")
+Các từ viết tắt đã test thành công:
+- we've, don't, I'm, I've, Spain's, It's, Vietnam's, Let's
 
-			// Thay các dấu gạch ngang bằng khoảng trắng (bao gồm hyphen, en-dash, em-dash)
-			replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
-			cleanLine = replacer.Replace(cleanLine)
-
-			// Gộp nhiều khoảng trắng thành một khoảng trắng
-			spaceRe := regexp.MustCompile(`\s+`)
-			cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
-
-			cleanLine = strings.TrimSpace(cleanLine)
-
-			// Nếu dòng trống, kết thúc paragraph hiện tại
-			if cleanLine == "" {
-				if len(currentParagraph) > 0 {
-					paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
-					currentParagraph = []string{}
-				}
-			} else {
-				currentParagraph = append(currentParagraph, cleanLine)
-			}
-		}
-
-		// Thêm paragraph cuối cùng nếu có
-		if len(currentParagraph) > 0 {
-			paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
-		}
-
-		// Nếu không có paragraph nào (không có dòng trống để phân tách), coi toàn bộ là 1 paragraph
-		if len(paragraphs) == 0 {
-			var allLines []string
-			for _, line := range contentAfterSeparator {
-				re := regexp.MustCompile(`\[[^\]]+\]`)
-				cleanLine := re.ReplaceAllString(line, "")
-				replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
-				cleanLine = replacer.Replace(cleanLine)
-				spaceRe := regexp.MustCompile(`\s+`)
-				cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
-				cleanLine = strings.TrimSpace(cleanLine)
-				if cleanLine != "" {
-					allLines = append(allLines, cleanLine)
-				}
-			}
-			if len(allLines) > 0 {
-				paragraphs = append(paragraphs, strings.Join(allLines, " "))
-			}
-		}
-
-		// Tạo dialog data cho mỗi paragraph với speaker là "guest"
-		var processedLines []string
-		for _, paragraph := range paragraphs {
-			paragraph = strings.TrimSpace(paragraph)
-			if paragraph != "" {
-				dialogData = append(dialogData, TextDialog{
-					Speaker: "guest",
-					Say:     paragraph,
-				})
-				processedLines = append(processedLines, paragraph)
-			}
-		}
-
-		return strings.Join(processedLines, "\n"), dialogData
-	}
-
-	// Xử lý format dialog như cũ
-	for _, line := range lines {
-		// Bước 1: Nếu có separator, loại bỏ tất cả các dòng text phía trên dòng "---" và cả dòng "---"
-		if hasSeparator {
-			if strings.TrimSpace(line) == "---" {
-				foundSeparator = true
-				continue
-			}
-
-			if !foundSeparator {
-				continue
-			}
-		}
-
-		// Bước 2: Xử lý dòng có tên người nói
-		if strings.Contains(line, ":") {
-			// Tách phần tên người nói và nội dung
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) > 1 {
-				speaker := strings.TrimSpace(parts[0])
-				content := parts[1]
-
-				// Loại bỏ tất cả các [markers] ở bất kỳ vị trí nào trong câu
-				re := regexp.MustCompile(`\[[^\]]+\]`)
-				cleanContent := re.ReplaceAllString(content, "")
-
-				// Trim space và chỉ giữ lại nội dung thực sự được phát âm
-				cleanContent = strings.TrimSpace(cleanContent)
-
-				// Chỉ thêm vào dialog nếu có nội dung thực sự
-				if cleanContent != "" {
-					dialogData = append(dialogData, TextDialog{
-						Speaker: speaker,
-						Say:     cleanContent,
-					})
-				}
-
-				// Cập nhật line cho text output
-				line = cleanContent
-			}
-		}
-
-		// Bước 3: Loại bỏ tất cả ký tự space trước và sau mỗi dòng
-		line = strings.TrimSpace(line)
-
-		// Giữ lại tất cả các dòng, kể cả dòng trống để duy trì cấu trúc
-		processedLines = append(processedLines, line)
-	}
-
-	return strings.Join(processedLines, "\n"), dialogData
-}
+Lưu ý: Nếu gặp vấn đề tương tự với các loại dấu nháy khác, có thể thêm các byte replacement tương ứng.
+*/
