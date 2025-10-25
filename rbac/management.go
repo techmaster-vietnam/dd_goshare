@@ -64,33 +64,74 @@ func RegisterRulesToDB() error {
 
 	log.Printf("DEBUG: Will register %d rules to DB", len(rules))
 
-	// ✅ Use UPSERT but preserve user customizations
-	for _, rule := range rules {
-		var existingRule models.Rule
-		result := db.Where("path = ? AND method = ? AND service = ?", rule.Path, rule.Method, rule.Service).First(&existingRule)
+	// Build a map of all existing rules by service
+	var dbRules []models.Rule
+	if err := db.Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
+		return fmt.Errorf("failed to query existing rules: %w", err)
+	}
+	dbRuleMap := make(map[string]*models.Rule) // key: method|path
+	for i := range dbRules {
+		key := dbRules[i].Method + "|" + dbRules[i].Path
+		dbRuleMap[key] = &dbRules[i]
+	}
 
-		if result.Error != nil {
-			// Rule doesn't exist, create new one with code defaults
-			if err := db.Create(&rule).Error; err != nil {
-				return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
-			}
-			log.Printf("DEBUG: Created new rule: %s %s", rule.Method, rule.Path)
-		} else {
-			// Rule exists, only update safe fields that won't override user customizations
+	for _, rule := range rules {
+		key := rule.Method + "|" + rule.Path
+		if existingRule, ok := dbRuleMap[key]; ok {
+			// Rule exists with same method/path/service, update fields
 			updates := map[string]interface{}{
 				"is_private": rule.IsPrivate,
-				// NOTE: Do NOT update access_type - preserve user customizations
 			}
-			if err := db.Model(&existingRule).Updates(updates).Error; err != nil {
+			validTypes := map[int]bool{1: true, 2: true, 3: true}
+			if validTypes[rule.AccessType] && rule.AccessType != existingRule.AccessType {
+				updates["access_type"] = rule.AccessType
+				log.Printf("DEBUG: Updated access_type for rule: %s %s (from %d to %d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
+			} else {
+				log.Printf("DEBUG: Preserved access_type for rule: %s %s (db=%d, code=%d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
+			}
+			if err := db.Model(existingRule).Updates(updates).Error; err != nil {
 				return fmt.Errorf("failed to update rule %s %s: %w", rule.Method, rule.Path, err)
 			}
-			log.Printf("DEBUG: Updated existing rule: %s %s (preserved access_type)", rule.Method, rule.Path)
+			continue
 		}
+
+		// If not found by method/path, try to find by service and (old path or method)
+		// This is a simple heuristic: if a rule for this service exists with a different path/method, update it in place
+		// (In production, you may want a more robust migration map or unique name field)
+		var existingRule models.Rule
+		result := db.Where("service = ? AND (path = ? OR method = ?)", rule.Service, rule.Path, rule.Method).First(&existingRule)
+		if result.Error == nil {
+			// Update the existing rule's path/method in place
+			updates := map[string]interface{}{
+				"path":       rule.Path,
+				"method":     rule.Method,
+				"is_private": rule.IsPrivate,
+			}
+			validTypes := map[int]bool{1: true, 2: true, 3: true}
+			if validTypes[rule.AccessType] && rule.AccessType != existingRule.AccessType {
+				updates["access_type"] = rule.AccessType
+				log.Printf("DEBUG: Updated access_type for rule: %s %s (from %d to %d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
+			} else {
+				log.Printf("DEBUG: Preserved access_type for rule: %s %s (db=%d, code=%d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
+			}
+			if err := db.Model(&existingRule).Updates(updates).Error; err != nil {
+				return fmt.Errorf("failed to update rule (moved) %s %s: %w", rule.Method, rule.Path, err)
+			}
+			log.Printf("DEBUG: Updated rule in place (moved): id=%d new=%s %s", existingRule.ID, rule.Method, rule.Path)
+			continue
+		}
+
+		// Otherwise, create new rule
+		if err := db.Create(&rule).Error; err != nil {
+			return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+		}
+		log.Printf("DEBUG: Created new rule: %s %s", rule.Method, rule.Path)
 	}
 
 	log.Printf("DEBUG: Successfully synced %d rules to DB", len(rules))
 	return nil
 }
+
 
 // SyncRolesWithDB sync default roles with database
 func SyncRolesWithDB(defaultRoles []string) error {
