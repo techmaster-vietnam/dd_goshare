@@ -30,6 +30,7 @@ type CustomerSubscription struct {
 	SubscriptionID      string     `gorm:"size:12;index;not null" json:"subscription_id"`
 	PaymentID           *string    `gorm:"size:12;index" json:"payment_id"`
 	OriginalTransaction string     `gorm:"size:255;uniqueIndex" json:"original_transaction"` // định danh duy nhất cho 1 chu kỳ
+	ExpiredAt           time.Time  `json:"expired_at"`
 	StartDate           time.Time  `gorm:"not null" json:"start_date"`
 	EndDate             *time.Time `json:"end_date"`
 	IsActive            bool       `gorm:"default:true" json:"is_active"`
@@ -39,7 +40,6 @@ type CustomerSubscription struct {
 	UpdatedAt           time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-
 type UpdateCustomerStatisticsRequest struct {
 	TotalDialogsCompleted   *int `json:"total_dialogs_completed"`
 	TotalExercisesCompleted *int `json:"total_exercises_completed"`
@@ -47,9 +47,9 @@ type UpdateCustomerStatisticsRequest struct {
 }
 
 type UpdateCustomerInfoRequest struct {
-	Name     *string `json:"name"`
-	Streak   *int    `json:"streak"`
-	Score    *int    `json:"score"`
+	Name   *string `json:"name"`
+	Streak *int    `json:"streak"`
+	Score  *int    `json:"score"`
 	// AvatarURL will be handled via file upload in handler
 }
 
