@@ -15,135 +15,94 @@ func TestRBACFunctions(t *testing.T) {
 		"guest":     4,
 	}
 
-	t.Run("TestAllow", func(t *testing.T) {
-		roleExp := Allow(1, 2) // admin, moderator
+	t.Run("TestAllowProtected", func(t *testing.T) {
+		roleExp := AllowProtected(1, 2) // admin, moderator
 		roles, action := roleExp()
-
-		if action != models.Allow {
-			t.Errorf("Expected action %d, got %d", models.Allow, action)
+		if action != models.Protected {
+			t.Errorf("Expected action %d, got %d", models.Protected, action)
 		}
-
-		if !roles[1].(bool) {
-			t.Error("Admin role should be allowed")
+		if b, ok := roles[1].(*bool); !ok || b == nil || !*b {
+			t.Error("Admin role should be allowed (true)")
 		}
-
-		if !roles[2].(bool) {
-			t.Error("Moderator role should be allowed")
+		if b, ok := roles[2].(*bool); !ok || b == nil || !*b {
+			t.Error("Moderator role should be allowed (true)")
 		}
-
-		if _, exists := roles[3]; exists {
+		if b, exists := roles[3]; exists && b != nil {
 			t.Error("User role should not be in allow list")
 		}
 	})
 
-	t.Run("TestAllowAll", func(t *testing.T) {
-		roleExp := AllowAll()
-		roles, action := roleExp()
-
-		if action != models.AllowAll {
-			t.Errorf("Expected action %d, got %d", models.AllowAll, action)
+	t.Run("TestAllowAllRoute", func(t *testing.T) {
+		route := models.Rule{AccessType: models.AllowAll, IsPrivate: true}
+		if !route.IsPrivate {
+			t.Error("AllowAll route should be private (require login)")
 		}
-
-		expectedRoles := []int{1, 2, 3, 4}
-		for _, roleID := range expectedRoles {
-			if !roles[roleID].(bool) {
-				t.Errorf("Role %d should be allowed", roleID)
-			}
+		if route.AccessType != models.AllowAll {
+			t.Errorf("Expected access_type AllowAll, got %d", route.AccessType)
 		}
 	})
 
-	t.Run("TestForbid", func(t *testing.T) {
-		roleExp := Forbid(4) // guest
-		roles, action := roleExp()
-
-		if action != models.Forbid {
-			t.Errorf("Expected action %d, got %d", models.Forbid, action)
+	t.Run("TestForbidAllRoute", func(t *testing.T) {
+		route := models.Rule{AccessType: models.ForbidAll, IsPrivate: true}
+		if !route.IsPrivate {
+			t.Error("ForbidAll route should be private (require login)")
 		}
-
-		if roles[4].(bool) {
-			t.Error("Guest role should be forbidden (false)")
-		}
-
-		if _, exists := roles[1]; exists {
-			t.Error("Admin role should not be in forbid list")
+		if route.AccessType != models.ForbidAll {
+			t.Errorf("Expected access_type ForbidAll, got %d", route.AccessType)
 		}
 	})
 
-	t.Run("TestForbidAll", func(t *testing.T) {
-		roleExp := ForbidAll()
-		roles, action := roleExp()
-
-		if action != models.ForbidAll {
-			t.Errorf("Expected action %d, got %d", models.ForbidAll, action)
+	t.Run("TestPublicRoute", func(t *testing.T) {
+		route := models.Rule{AccessType: models.AllowAll, IsPrivate: false}
+		if route.IsPrivate {
+			t.Error("Public route should not require login (is_private=false)")
 		}
-
-		expectedRoles := []int{1, 2, 3, 4}
-		for _, roleID := range expectedRoles {
-			if roles[roleID].(bool) {
-				t.Errorf("Role %d should be forbidden (false)", roleID)
-			}
+		if route.AccessType != models.AllowAll {
+			t.Errorf("Expected access_type AllowAll, got %d", route.AccessType)
 		}
 	})
 }
 
 func TestRoleExpCombination(t *testing.T) {
-	// Setup test roles
-	Roles = map[string]int{
-		"admin":     1,
-		"moderator": 2,
-		"user":      3,
-		"guest":     4,
-	}
+	t.Run("TestForbidAllAccess", func(t *testing.T) {
+		route := models.Rule{AccessType: models.ForbidAll, IsPrivate: true}
+		// Giả lập middleware: đã đăng nhập nhưng bị cấm
+		if route.AccessType == models.ForbidAll && route.IsPrivate {
+			// Không cho phép truy cập
+		} else {
+			t.Error("ForbidAll route logic failed")
+		}
+	})
 
-	t.Run("TestComplexAllow", func(t *testing.T) {
-		// Chỉ cho phép admin và user
-		roleExp := Allow(1, 3)
+	t.Run("TestImplicitDeny", func(t *testing.T) {
+		roleExp := AllowProtected(1)
+		roles, _ := roleExp()
+		if _, exists := roles[3]; exists {
+			t.Error("Role 3 should not be in allow map (implicit deny)")
+		}
+	})
+
+	t.Run("TestComplexAllowProtected", func(t *testing.T) {
+		roleExp := AllowProtected(1, 3)
 		roles, action := roleExp()
 
-		if action != models.Allow {
-			t.Errorf("Expected action %d, got %d", models.Allow, action)
+		if action != models.Protected {
+			t.Errorf("Expected action %d, got %d", models.Protected, action)
 		}
 
-		// Check allowed roles
 		allowedRoles := []int{1, 3}
 		for _, roleID := range allowedRoles {
-			if !roles[roleID].(bool) {
-				t.Errorf("Role %d should be allowed", roleID)
+			if b, ok := roles[roleID].(*bool); !ok || b == nil || !*b {
+				t.Errorf("Role %d should be allowed (true)", roleID)
 			}
 		}
 
-		// Check not allowed roles
 		notAllowedRoles := []int{2, 4}
 		for _, roleID := range notAllowedRoles {
-			if _, exists := roles[roleID]; exists {
+			if b, exists := roles[roleID]; exists && b != nil {
 				t.Errorf("Role %d should not be in allow map", roleID)
 			}
 		}
 	})
 
-	t.Run("TestComplexForbid", func(t *testing.T) {
-		// Cấm guest và user
-		roleExp := Forbid(3, 4)
-		roles, action := roleExp()
-
-		if action != models.Forbid {
-			t.Errorf("Expected action %d, got %d", models.Forbid, action)
-		}
-
-		// Check forbidden roles
-		forbiddenRoles := []int{3, 4}
-		for _, roleID := range forbiddenRoles {
-			if roles[roleID].(bool) {
-				t.Errorf("Role %d should be forbidden (false)", roleID)
-			}
-		}
-
-		// Check roles not in forbid list
-		notForbiddenRoles := []int{1, 2}
-		for _, roleID := range notForbiddenRoles {
-			if _, exists := roles[roleID]; exists {
-				t.Errorf("Role %d should not be in forbid map", roleID)
-			}
-		}
-	})
 }

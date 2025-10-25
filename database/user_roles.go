@@ -6,6 +6,7 @@ import (
 	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
 	"gorm.io/gorm"
 )
+
 // hàm này sẽ tạo role admin và gán tất cả các rule hiện có cho role này, sau đó gán role admin cho user đầu tiên tạo tài khoản
 func CreateAdminRoleAndAssign(db *gorm.DB, userID string) error {
 	return db.Transaction(func(tx *gorm.DB) error {
@@ -36,9 +37,11 @@ func CreateAdminRoleAndAssign(db *gorm.DB, userID string) error {
 			var existingAssignment models.RuleRole
 			if err := tx.Where("role_id = ? AND rule_id = ?", adminRole.ID, rule.ID).First(&existingAssignment).Error; err != nil {
 				if err == gorm.ErrRecordNotFound {
+					allowed := true
 					assignment := models.RuleRole{
-						RoleID: adminRole.ID,
-						RuleID: rule.ID,
+						RoleID:  adminRole.ID,
+						RuleID:  rule.ID,
+						Allowed: &allowed,
 					}
 					if err := tx.Create(&assignment).Error; err != nil {
 						return fmt.Errorf("failed to assign rule to admin role")

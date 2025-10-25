@@ -5,46 +5,27 @@ import (
 	"github.com/techmaster-vietnam/dd_goshare/pkg/pmodel"
 )
 
-// Cho phép 1 hoặc nhiều role truy cập
-func Allow(roles ...int) RoleExp {
+func AllowProtected(roles ...int) RoleExp {
 	return func() (pmodel.Roles, int) {
 		mapRoles := make(pmodel.Roles)
 		for _, role := range roles {
-			mapRoles[role] = true
+			b := true
+			mapRoles[role] = &b
 		}
-		return mapRoles, models.Allow
+		return mapRoles, models.Protected
 	}
 }
 
-// Cho phép tất cả các role
-func AllowAll() RoleExp {
+// Public route (ai cũng truy cập được)
+func PublicRoute() RoleExp {
 	return func() (pmodel.Roles, int) {
-		mapRoles := make(pmodel.Roles)
-		for _, roleID := range Roles {
-			mapRoles[roleID] = true
-		}
-		return mapRoles, models.AllowAll
+		return make(pmodel.Roles), models.AllowAll
 	}
 }
 
-// Cấm 1 hoặc nhiều role truy cập
-func Forbid(roles ...int) RoleExp {
+// Private route (chỉ admin)
+func PrivateRoute() RoleExp {
 	return func() (pmodel.Roles, int) {
-		mapRoles := make(pmodel.Roles)
-		for _, role := range roles {
-			mapRoles[role] = false
-		}
-		return mapRoles, models.Forbid
-	}
-}
-
-// Cấm tất cả các role (trừ root nếu muốn tuỳ chỉnh)
-func ForbidAll() RoleExp {
-	return func() (pmodel.Roles, int) {
-		mapRoles := make(pmodel.Roles)
-		for _, roleID := range Roles {
-			mapRoles[roleID] = false
-		}
-		return mapRoles, models.ForbidAll
+		return make(pmodel.Roles), models.ForbidAll
 	}
 }

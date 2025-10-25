@@ -1,5 +1,11 @@
 package models
 
+// RBAC access_type constants (v2.0)
+const (
+	AllowAll  = 1 // ALLOWALL: Cho phép tất cả user đã đăng nhập (bất kỳ role nào)
+	Protected = 2 // PROTECTED: Chỉ role được explicit allow
+	ForbidAll = 3 // FORBIDALL: Cấm tất cả (route bị khóa hoặc chỉ cho phép override qua DB)
+)
 // Role model với các trường mở rộng cho RBAC hiện đại
 // và quan hệ many2many với Rule
 type Role struct {
@@ -49,22 +55,19 @@ func (UserRole) TableName() string {
 // RuleRole liên kết rule với nhiều role, cho phép access_type riêng cho từng role trên từng rule
 // Nếu access_type là NULL thì mặc định lấy theo rule
 type RuleRole struct {
-	RuleID     int  `gorm:"primaryKey;index" json:"rule_id"`
-	RoleID     int  `gorm:"primaryKey;index" json:"role_id"`
-	AccessType *int `gorm:"type:smallint;default:null" json:"access_type,omitempty"` // 1: allow, 2: forbid, NULL (mặc định lấy theo rule)
+	RuleID  int   `gorm:"primaryKey;index" json:"rule_id"`
+	RoleID  int   `gorm:"primaryKey;index" json:"role_id"`
+	Allowed *bool `gorm:"type:boolean;default:null" json:"allowed,omitempty"` // true: cho phép, false: explicit deny, NULL: lấy theo rule
 
 	// Relationships
 	Rule Rule `gorm:"foreignKey:RuleID;constraint:OnDelete:CASCADE" json:"rule,omitempty"`
 	Role Role `gorm:"foreignKey:RoleID;constraint:OnDelete:CASCADE" json:"role,omitempty"`
 }
 
-// RBAC access_type constants
-const (
-	Allow     = 1
-	Forbid    = 2
-	AllowAll  = 3
-	ForbidAll = 4
-)
+type RoleWithAllowed struct {
+	Role
+	Allowed *bool `json:"allowed"`
+}
 
 // TableName specifies the table name for RuleRole model
 func (RuleRole) TableName() string {
@@ -77,8 +80,9 @@ func (r *Role) IsAdmin() bool {
 }
 
 // Helper methods for Rule
-func (r *Rule) IsPublic() bool {
-	return !r.IsPrivate
+// IsAllowAll checks if the access type is AllowAll
+func (r *Rule) IsAllowAll() bool {
+	return r.AccessType == AllowAll
 }
 
 func (r *Rule) GetRouteKey() string {
