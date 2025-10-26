@@ -18,17 +18,17 @@ type Customer struct {
 
 // CustomerAchievement đại diện cho thành tựu của khách hàng
 type CustomerAchievement struct {
-	ID            string    `gorm:"primaryKey;size:12" json:"id"`
+	ID            string    `gorm:"primaryKey;size:32" json:"id"`
 	CustomerID    string    `gorm:"size:50;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"` // Updated to match Customer.ID
 	AchievementID string    `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"achievement_id"`
 	UnlockedAt    time.Time `json:"unlocked_at"`
 }
 
 type CustomerSubscription struct {
-	ID                  string     `gorm:"primaryKey;size:12" json:"id"`
+	ID                  string     `gorm:"primaryKey;size:50" json:"id"`
 	CustomerID          string     `gorm:"size:50;index;not null" json:"customer_id"`
-	SubscriptionID      string     `gorm:"size:12;index;not null" json:"subscription_id"`
-	PaymentID           *string    `gorm:"size:12;index" json:"payment_id"`
+	SubscriptionID      string     `gorm:"size:32;index;not null" json:"subscription_id"`
+	PaymentID           *string    `gorm:"size:32;index" json:"payment_id"`
 	OriginalTransaction string     `gorm:"size:255;uniqueIndex" json:"original_transaction"` // định danh duy nhất cho 1 chu kỳ
 	ExpiredAt           time.Time  `json:"expired_at"`
 	StartDate           time.Time  `gorm:"not null" json:"start_date"`
