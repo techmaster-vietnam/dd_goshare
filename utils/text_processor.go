@@ -74,12 +74,9 @@ func ProcessTextToScript(inputFile, outPathText, outPathJson, outPathScript stri
 
 func processContent(content string) (string, []TextDialog) {
 	lines := strings.Split(content, "\n")
-	var processedLines []string
-	var dialogData []TextDialog
-	var foundSeparator bool
-	var hasSeparator bool
 
 	// Kiểm tra xem file có separator "---" không
+	hasSeparator := false
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "---" {
 			hasSeparator = true
@@ -88,7 +85,7 @@ func processContent(content string) (string, []TextDialog) {
 	}
 
 	// Kiểm tra xem file có format dialog (có dấu ":") không
-	var countFormat int
+	countFormat := 0
 	for _, line := range lines {
 		if strings.Contains(line, ":") && len(strings.SplitN(line, ":", 2)) > 1 {
 			// Kiểm tra xem có phải là dialog format thật không (không phải chỉ là dấu ":" trong câu)
@@ -99,100 +96,86 @@ func processContent(content string) (string, []TextDialog) {
 			if len(speaker) > 0 && len(speaker) < 50 && len(content) > 0 {
 				countFormat++
 			}
-
 		}
 	}
 
-	// Nếu không có dialog format, xử lý như story với speaker mặc định là "guest"
+	// Phân nhánh xử lý theo loại content
 	if countFormat < 7 {
-		// Xử lý separator nếu có
-		var contentAfterSeparator []string
-		if hasSeparator {
-			for _, line := range lines {
-				if strings.TrimSpace(line) == "---" {
-					foundSeparator = true
-					continue
-				}
-				if foundSeparator {
-					contentAfterSeparator = append(contentAfterSeparator, line)
-				}
-			}
-		} else {
-			contentAfterSeparator = lines
-		}
-
-		// Loại bỏ các [markers] và tạo nội dung theo paragraph
-		var paragraphs []string
-		var currentParagraph []string
-
-		for _, line := range contentAfterSeparator {
-			// Loại bỏ tất cả các [markers] ở bất kỳ vị trí nào trong câu
-			re := regexp.MustCompile(`\[[^\]]+\]`)
-			cleanLine := re.ReplaceAllString(line, "")
-
-			// Thay các dấu gạch ngang bằng khoảng trắng (bao gồm hyphen, en-dash, em-dash)
-			replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
-			cleanLine = replacer.Replace(cleanLine)
-
-			// Gộp nhiều khoảng trắng thành một khoảng trắng
-			spaceRe := regexp.MustCompile(`\s+`)
-			cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
-
-			cleanLine = strings.TrimSpace(cleanLine)
-
-			// Nếu dòng trống, kết thúc paragraph hiện tại
-			if cleanLine == "" {
-				if len(currentParagraph) > 0 {
-					paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
-					currentParagraph = []string{}
-				}
-			} else {
-				currentParagraph = append(currentParagraph, cleanLine)
-			}
-		}
-
-		// Thêm paragraph cuối cùng nếu có
-		if len(currentParagraph) > 0 {
-			paragraphs = append(paragraphs, strings.Join(currentParagraph, " "))
-		}
-
-		// Nếu không có paragraph nào (không có dòng trống để phân tách), coi toàn bộ là 1 paragraph
-		if len(paragraphs) == 0 {
-			var allLines []string
-			for _, line := range contentAfterSeparator {
-				re := regexp.MustCompile(`\[[^\]]+\]`)
-				cleanLine := re.ReplaceAllString(line, "")
-				replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
-				cleanLine = replacer.Replace(cleanLine)
-				spaceRe := regexp.MustCompile(`\s+`)
-				cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
-				cleanLine = strings.TrimSpace(cleanLine)
-				if cleanLine != "" {
-					allLines = append(allLines, cleanLine)
-				}
-			}
-			if len(allLines) > 0 {
-				paragraphs = append(paragraphs, strings.Join(allLines, " "))
-			}
-		}
-
-		// Tạo dialog data cho mỗi paragraph với speaker là "guest"
-		var processedLines []string
-		for _, paragraph := range paragraphs {
-			paragraph = strings.TrimSpace(paragraph)
-			if paragraph != "" {
-				dialogData = append(dialogData, TextDialog{
-					Speaker: "guest",
-					Say:     paragraph,
-				})
-				processedLines = append(processedLines, paragraph)
-			}
-		}
-
-		return strings.Join(processedLines, "\n"), dialogData
+		// Story mode: 1 người nói (guest) - xử lý từng dòng
+		return processStoryMode(lines, hasSeparator)
 	}
 
-	// Xử lý format dialog như cũ
+	// Dialog mode: 2+ người nói - xử lý theo format "Speaker: content"
+	return processDialogMode(lines, hasSeparator)
+}
+
+// processStoryMode xử lý story với 1 người nói (guest)
+// Mỗi dòng có nội dung sẽ là 1 dialog item riêng
+func processStoryMode(lines []string, hasSeparator bool) (string, []TextDialog) {
+	var dialogData []TextDialog
+	var foundSeparator bool
+
+	// Xử lý separator nếu có
+	var contentAfterSeparator []string
+	if hasSeparator {
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "---" {
+				foundSeparator = true
+				continue
+			}
+			if foundSeparator {
+				contentAfterSeparator = append(contentAfterSeparator, line)
+			}
+		}
+	} else {
+		contentAfterSeparator = lines
+	}
+
+	// Loại bỏ các [markers] và xử lý TỪNG DÒNG (giữ nguyên cấu trúc)
+	var dialogLines []string
+
+	for _, line := range contentAfterSeparator {
+		// Loại bỏ tất cả các [markers] ở bất kỳ vị trí nào trong câu
+		re := regexp.MustCompile(`\[[^\]]+\]`)
+		cleanLine := re.ReplaceAllString(line, "")
+
+		// Thay các dấu gạch ngang bằng khoảng trắng (bao gồm hyphen, en-dash, em-dash)
+		replacer := strings.NewReplacer("-", " ", "–", " ", "—", " ", "—", " ")
+		cleanLine = replacer.Replace(cleanLine)
+
+		// Gộp nhiều khoảng trắng thành một khoảng trắng
+		spaceRe := regexp.MustCompile(`\s+`)
+		cleanLine = spaceRe.ReplaceAllString(cleanLine, " ")
+
+		cleanLine = strings.TrimSpace(cleanLine)
+
+		// Chỉ thêm các dòng không rỗng (dòng trống sẽ bị bỏ qua)
+		if cleanLine != "" {
+			dialogLines = append(dialogLines, cleanLine)
+		}
+	}
+
+	// Tạo dialog data cho MỖI DÒNG với speaker là "guest"
+	var processedLines []string
+	for _, line := range dialogLines {
+		dialogData = append(dialogData, TextDialog{
+			Speaker: "guest",
+			Say:     line,
+		})
+		processedLines = append(processedLines, line)
+	}
+
+	return strings.Join(processedLines, "\n"), dialogData
+}
+
+// processDialogMode xử lý dialog với 2+ người nói
+// Format: "Speaker: content"
+func processDialogMode(lines []string, hasSeparator bool) (string, []TextDialog) {
+	var processedLines []string
+	var dialogData []TextDialog
+	var foundSeparator bool
+
+	// Xử lý format dialog
 	for _, line := range lines {
 		// Bước 1: Nếu có separator, loại bỏ tất cả các dòng text phía trên dòng "---" và cả dòng "---"
 		if hasSeparator {
