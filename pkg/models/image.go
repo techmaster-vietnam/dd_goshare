@@ -7,6 +7,10 @@ type Image struct {
 	TopicID  *string `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"topic_id"`
 	FileURL  string  `json:"file_url" gorm:"type:text; not null"`
 	IsFigure bool    `json:"is_figure" gorm:"type:boolean; not null;default:false"`
+	AuthorID string  `gorm:"size:12;index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"author_id"`
+
+	// Quan hệ với các bảng khác
+	Author User `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
 }
 
 // TableName overrides the table name used by Image to `images`
@@ -21,4 +25,3 @@ type ImageFigureRequest struct {
 type ImageRequest struct {
 	PathFigure string `json:"path_figure"`
 }
-
