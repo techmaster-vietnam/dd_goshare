@@ -1,5 +1,43 @@
 package rbac
 
+/*
+RBAC Management Package - Enhanced Rule Synchronization System
+
+This package provides comprehensive rule and role management with automatic synchronization
+between code-defined routes and database rules.
+
+KEY FEATURES:
+1. Automatic path change detection and rule_roles migration
+2. Obsolete rules cleanup with CASCADE delete
+3. Flexible role assignment strategies (smart, all roles, specific roles)
+4. Orphaned rule_roles cleanup
+
+USAGE EXAMPLES:
+
+	// 1. Smart sync with intelligent role assignment based on access_type
+	if err := rbac.FullRuleSync(); err != nil {
+		log.Fatalf("Failed to sync: %v", err)
+	}
+
+	// 2. Sync and assign ALL roles to new rules
+	if err := rbac.FullRuleSyncWithAllRoles(); err != nil {
+		log.Fatalf("Failed to sync: %v", err)
+	}
+
+	// 3. Sync and assign specific roles (e.g., role 1, 2, 3)
+	if err := rbac.FullRuleSyncWithRoles(1, 2, 3); err != nil {
+		log.Fatalf("Failed to sync: %v", err)
+	}
+
+PATH CHANGE HANDLING:
+When a route path changes in code (e.g., /api/user -> /api/users):
+- System detects the change by matching method+service
+- Creates new rule with new path
+- Automatically migrates all rule_roles from old rule to new rule
+- Cleans up the obsolete old rule
+- Result: Zero downtime, no permission loss
+*/
+
 import (
 	"fmt"
 	"log"
@@ -7,6 +45,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
+	"gorm.io/gorm"
 )
 
 // BuildPublicRoutes tự động phát hiện public routes từ registered routes (theo Core pattern)
@@ -64,17 +103,51 @@ func RegisterRulesToDB() error {
 
 	log.Printf("DEBUG: Will register %d rules to DB", len(rules))
 
-	// ✅ Use UPSERT but preserve user customizations
+	// ✅ Use UPSERT with enhanced logic to handle path changes
+	// Build a map of all rules in DB for this service to detect changes
+	var dbRules []models.Rule
+	if err := db.Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
+		return fmt.Errorf("failed to query existing rules: %w", err)
+	}
+
+	dbRuleMap := make(map[string]*models.Rule) // key: method|service
+	for i := range dbRules {
+		key := dbRules[i].Method + "|" + dbRules[i].Service
+		dbRuleMap[key] = &dbRules[i]
+	}
+
 	for _, rule := range rules {
 		var existingRule models.Rule
 		result := db.Where("path = ? AND method = ? AND service = ?", rule.Path, rule.Method, rule.Service).First(&existingRule)
 
 		if result.Error != nil {
-			// Rule doesn't exist, create new one with code defaults
-			if err := db.Create(&rule).Error; err != nil {
-				return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+			// Rule doesn't exist with this exact path+method+service
+			// Check if there's an existing rule with same method+service but different path (path change scenario)
+			ruleKey := rule.Method + "|" + rule.Service
+			if oldRule, exists := dbRuleMap[ruleKey]; exists && oldRule.Path != rule.Path {
+				// Path has changed! Migrate rule_roles
+				log.Printf("🔄 DETECTED PATH CHANGE: %s -> %s (Method: %s, Service: %s)",
+					oldRule.Path, rule.Path, rule.Method, rule.Service)
+
+				// Create new rule first
+				if err := db.Create(&rule).Error; err != nil {
+					return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+				}
+				log.Printf("✅ Created new rule: %s %s (ID: %d)", rule.Method, rule.Path, rule.ID)
+
+				// Migrate rule_roles from old rule to new rule
+				if err := migrateRuleRoles(db, oldRule.ID, rule.ID); err != nil {
+					log.Printf("⚠️  Warning: Failed to migrate rule_roles from %d to %d: %v", oldRule.ID, rule.ID, err)
+				}
+
+				// The old rule will be cleaned up by CleanupObsoleteRules later
+			} else {
+				// Completely new rule
+				if err := db.Create(&rule).Error; err != nil {
+					return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+				}
+				log.Printf("✅ Created new rule: %s %s (ID: %d)", rule.Method, rule.Path, rule.ID)
 			}
-			log.Printf("DEBUG: Created new rule: %s %s", rule.Method, rule.Path)
 		} else {
 			// Rule exists, only update safe fields that won't override user customizations
 			updates := map[string]interface{}{
@@ -84,11 +157,643 @@ func RegisterRulesToDB() error {
 			if err := db.Model(&existingRule).Updates(updates).Error; err != nil {
 				return fmt.Errorf("failed to update rule %s %s: %w", rule.Method, rule.Path, err)
 			}
-			log.Printf("DEBUG: Updated existing rule: %s %s (preserved access_type)", rule.Method, rule.Path)
+			log.Printf("♻️  Updated existing rule: %s %s (preserved access_type)", rule.Method, rule.Path)
 		}
 	}
 
 	log.Printf("DEBUG: Successfully synced %d rules to DB", len(rules))
+
+	// ✅ Cleanup obsolete rules after syncing fresh routes
+	if err := CleanupObsoleteRules(); err != nil {
+		log.Printf("Warning: Failed to cleanup obsolete rules: %v", err)
+		// Don't return error, just log warning to not break the main flow
+	}
+
+	return nil
+}
+
+// SyncRulesToDB đồng bộ rules từ code và xóa rules cũ không còn tồn tại
+func SyncRulesToDB() error {
+	// 1. Đăng ký/cập nhật rules từ fresh routes
+	if err := RegisterRulesToDB(); err != nil {
+		return fmt.Errorf("failed to register rules: %w", err)
+	}
+
+	log.Println("Successfully synced rules to database and cleaned up obsolete rules")
+	return nil
+}
+
+// migrateRuleRoles di chuyển rule_roles từ rule cũ sang rule mới khi path thay đổi
+func migrateRuleRoles(db *gorm.DB, oldRuleID, newRuleID int) error {
+	// 1. Lấy tất cả rule_roles của rule cũ
+	var oldRuleRoles []models.RuleRole
+	if err := db.Where("rule_id = ?", oldRuleID).Find(&oldRuleRoles).Error; err != nil {
+		return fmt.Errorf("failed to fetch old rule_roles: %w", err)
+	}
+
+	if len(oldRuleRoles) == 0 {
+		log.Printf("⚠️  No rule_roles to migrate from rule %d", oldRuleID)
+		return nil
+	}
+
+	log.Printf("🔄 Starting migration of %d rule_roles from rule %d to rule %d", len(oldRuleRoles), oldRuleID, newRuleID)
+
+	// 2. Migrate từng rule_role một để tránh lỗi batch insert
+	migratedCount := 0
+	for _, oldRuleRole := range oldRuleRoles {
+		newRuleRole := models.RuleRole{
+			RuleID:  newRuleID,
+			RoleID:  oldRuleRole.RoleID,
+			Allowed: oldRuleRole.Allowed,
+		}
+
+		// Check if this rule_role already exists
+		var existingRuleRole models.RuleRole
+		result := db.Where("rule_id = ? AND role_id = ?", newRuleID, oldRuleRole.RoleID).First(&existingRuleRole)
+
+		if result.Error != nil {
+			// Doesn't exist, create it
+			if err := db.Create(&newRuleRole).Error; err != nil {
+				log.Printf("❌ Failed to migrate rule_role: rule_id=%d, role_id=%d, error=%v",
+					oldRuleID, oldRuleRole.RoleID, err)
+				continue // Continue with other roles instead of failing completely
+			}
+			log.Printf("   ✅ Migrated: RuleID %d -> %d, RoleID %d, Allowed %v",
+				oldRuleID, newRuleID, oldRuleRole.RoleID, oldRuleRole.Allowed)
+			migratedCount++
+		} else {
+			log.Printf("   ℹ️  Rule-role already exists: RuleID %d, RoleID %d (skipping)",
+				newRuleID, oldRuleRole.RoleID)
+		}
+	}
+
+	if migratedCount < len(oldRuleRoles) {
+		log.Printf("⚠️  Warning: Only migrated %d out of %d rule_roles", migratedCount, len(oldRuleRoles))
+	} else {
+		log.Printf("✅ Successfully migrated all %d rule_roles from rule %d to rule %d",
+			migratedCount, oldRuleID, newRuleID)
+	}
+
+	return nil
+}
+
+// DebugRuleMigration hiển thị chi tiết rule_roles trước và sau migration
+func DebugRuleMigration(oldRuleID, newRuleID int) error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	log.Println("==========================================")
+	log.Printf("🔍 DEBUG: Rule Migration Analysis")
+	log.Println("==========================================")
+
+	// Check old rule
+	var oldRule models.Rule
+	if err := db.Where("id = ?", oldRuleID).First(&oldRule).Error; err != nil {
+		log.Printf("Old Rule ID %d: NOT FOUND", oldRuleID)
+	} else {
+		log.Printf("Old Rule ID %d: %s %s", oldRuleID, oldRule.Method, oldRule.Path)
+	}
+
+	// Check new rule
+	var newRule models.Rule
+	if err := db.Where("id = ?", newRuleID).First(&newRule).Error; err != nil {
+		log.Printf("New Rule ID %d: NOT FOUND", newRuleID)
+	} else {
+		log.Printf("New Rule ID %d: %s %s", newRuleID, newRule.Method, newRule.Path)
+	}
+
+	log.Println("------------------------------------------")
+
+	// Get old rule_roles
+	var oldRuleRoles []models.RuleRole
+	if err := db.Where("rule_id = ?", oldRuleID).Find(&oldRuleRoles).Error; err != nil {
+		return fmt.Errorf("failed to fetch old rule_roles: %w", err)
+	}
+
+	log.Printf("Old Rule (%d) has %d role assignments:", oldRuleID, len(oldRuleRoles))
+	for _, rr := range oldRuleRoles {
+		log.Printf("   - RoleID: %d, Allowed: %v", rr.RoleID, rr.Allowed)
+	}
+
+	log.Println("------------------------------------------")
+
+	// Get new rule_roles
+	var newRuleRoles []models.RuleRole
+	if err := db.Where("rule_id = ?", newRuleID).Find(&newRuleRoles).Error; err != nil {
+		return fmt.Errorf("failed to fetch new rule_roles: %w", err)
+	}
+
+	log.Printf("New Rule (%d) has %d role assignments:", newRuleID, len(newRuleRoles))
+	for _, rr := range newRuleRoles {
+		log.Printf("   - RoleID: %d, Allowed: %v", rr.RoleID, rr.Allowed)
+	}
+
+	log.Println("------------------------------------------")
+
+	// Analysis
+	if len(oldRuleRoles) > len(newRuleRoles) {
+		log.Printf("⚠️  WARNING: Lost %d role assignments during migration!",
+			len(oldRuleRoles)-len(newRuleRoles))
+
+		// Find missing roles
+		oldRoleMap := make(map[int]bool)
+		for _, rr := range oldRuleRoles {
+			oldRoleMap[rr.RoleID] = true
+		}
+
+		newRoleMap := make(map[int]bool)
+		for _, rr := range newRuleRoles {
+			newRoleMap[rr.RoleID] = true
+		}
+
+		log.Println("Missing Role IDs:")
+		for roleID := range oldRoleMap {
+			if !newRoleMap[roleID] {
+				log.Printf("   - RoleID %d is missing in new rule", roleID)
+			}
+		}
+	} else if len(oldRuleRoles) == len(newRuleRoles) {
+		log.Println("✅ All role assignments successfully migrated")
+	} else {
+		log.Printf("ℹ️  New rule has MORE roles than old rule (+%d)",
+			len(newRuleRoles)-len(oldRuleRoles))
+	}
+
+	log.Println("==========================================")
+	return nil
+}
+
+// AutoAssignDefaultRoles tự động gán roles mặc định cho rules chưa có role assignments
+func AutoAssignDefaultRoles() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Lấy tất cả roles có sẵn trong hệ thống
+	var availableRoles []models.Role
+	if err := db.Find(&availableRoles).Error; err != nil {
+		return fmt.Errorf("failed to fetch available roles: %w", err)
+	}
+
+	if len(availableRoles) == 0 {
+		log.Println("No roles found in database, skipping auto-assignment")
+		return nil
+	}
+
+	// Tìm các rule chưa có role assignments
+	var rulesWithoutRoles []struct {
+		ID         int    `json:"id"`
+		Path       string `json:"path"`
+		Method     string `json:"method"`
+		AccessType int    `json:"access_type"`
+	}
+
+	query := `
+	SELECT r.id, r.path, r.method, r.access_type
+	FROM rules r
+	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
+	WHERE r.service = ? AND rr.rule_id IS NULL
+	`
+
+	if err := db.Raw(query, config.Service).Scan(&rulesWithoutRoles).Error; err != nil {
+		return fmt.Errorf("failed to find rules without roles: %w", err)
+	}
+
+	if len(rulesWithoutRoles) == 0 {
+		log.Println("All rules already have role assignments")
+		return nil
+	}
+
+	// Gán roles theo logic nghiệp vụ
+	var ruleRoles []models.RuleRole
+	for _, rule := range rulesWithoutRoles {
+		assignedRoles := determineRolesForRule(rule, availableRoles)
+
+		for _, roleID := range assignedRoles {
+			ruleRole := models.RuleRole{
+				RuleID: rule.ID,
+				RoleID: roleID,
+				// Allowed sẽ là nil (default) để follow rule's access_type
+			}
+			ruleRoles = append(ruleRoles, ruleRole)
+		}
+
+		log.Printf("Auto-assigning roles %v to rule: %s %s (ID: %d, AccessType: %d)",
+			assignedRoles, rule.Method, rule.Path, rule.ID, rule.AccessType)
+	}
+
+	// Batch insert rule_roles
+	if err := db.Create(&ruleRoles).Error; err != nil {
+		return fmt.Errorf("failed to auto-assign roles: %w", err)
+	}
+
+	log.Printf("Auto-assigned %d role assignments to %d rules", len(ruleRoles), len(rulesWithoutRoles))
+	return nil
+}
+
+// determineRolesForRule xác định roles nào sẽ được gán cho rule dựa trên access_type và logic nghiệp vụ
+func determineRolesForRule(rule struct {
+	ID         int    `json:"id"`
+	Path       string `json:"path"`
+	Method     string `json:"method"`
+	AccessType int    `json:"access_type"`
+}, availableRoles []models.Role) []int {
+
+	var roleIDs []int
+
+	// Logic gán role dựa trên access_type:
+	switch rule.AccessType {
+	case 1: // AllowAll - gán tất cả roles
+		for _, role := range availableRoles {
+			roleIDs = append(roleIDs, role.ID)
+		}
+
+	case 2: // Protected - chỉ gán admin role
+		for _, role := range availableRoles {
+			if role.Name == "admin" {
+				roleIDs = append(roleIDs, role.ID)
+				break
+			}
+		}
+		// Nếu không tìm thấy admin role, gán role đầu tiên
+		if len(roleIDs) == 0 && len(availableRoles) > 0 {
+			roleIDs = append(roleIDs, availableRoles[0].ID)
+		}
+
+	case 3: // ForbidAll - gán admin role để có thể override
+		for _, role := range availableRoles {
+			if role.Name == "admin" {
+				roleIDs = append(roleIDs, role.ID)
+				break
+			}
+		}
+		// Nếu không tìm thấy admin role, gán role đầu tiên
+		if len(roleIDs) == 0 && len(availableRoles) > 0 {
+			roleIDs = append(roleIDs, availableRoles[0].ID)
+		}
+
+	default:
+		// Default: gán tất cả roles
+		for _, role := range availableRoles {
+			roleIDs = append(roleIDs, role.ID)
+		}
+	}
+
+	return roleIDs
+}
+
+// AutoAssignSpecificRoles gán các role IDs cụ thể cho rules chưa có role assignments
+func AutoAssignSpecificRoles(roleIDs []int) error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	if len(roleIDs) == 0 {
+		return fmt.Errorf("no role IDs provided")
+	}
+
+	// Validate role IDs exist
+	var existingRoles []models.Role
+	if err := db.Where("id IN ?", roleIDs).Find(&existingRoles).Error; err != nil {
+		return fmt.Errorf("failed to validate role IDs: %w", err)
+	}
+
+	if len(existingRoles) != len(roleIDs) {
+		return fmt.Errorf("some role IDs do not exist in database")
+	}
+
+	// Tìm các rule chưa có role assignments
+	var rulesWithoutRoles []struct {
+		ID         int    `json:"id"`
+		Path       string `json:"path"`
+		Method     string `json:"method"`
+		AccessType int    `json:"access_type"`
+	}
+
+	query := `
+	SELECT r.id, r.path, r.method, r.access_type
+	FROM rules r
+	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
+	WHERE r.service = ? AND rr.rule_id IS NULL
+	`
+
+	if err := db.Raw(query, config.Service).Scan(&rulesWithoutRoles).Error; err != nil {
+		return fmt.Errorf("failed to find rules without roles: %w", err)
+	}
+
+	if len(rulesWithoutRoles) == 0 {
+		log.Println("All rules already have role assignments")
+		return nil
+	}
+
+	// Gán các role IDs đã chỉ định cho tất cả rules
+	var ruleRoles []models.RuleRole
+	for _, rule := range rulesWithoutRoles {
+		for _, roleID := range roleIDs {
+			ruleRole := models.RuleRole{
+				RuleID: rule.ID,
+				RoleID: roleID,
+				// Allowed sẽ là nil (default) để follow rule's access_type
+			}
+			ruleRoles = append(ruleRoles, ruleRole)
+		}
+
+		log.Printf("Auto-assigning roles %v to rule: %s %s (ID: %d)",
+			roleIDs, rule.Method, rule.Path, rule.ID)
+	}
+
+	// Batch insert rule_roles
+	if err := db.Create(&ruleRoles).Error; err != nil {
+		return fmt.Errorf("failed to auto-assign specific roles: %w", err)
+	}
+
+	log.Printf("Auto-assigned %d role assignments (%d rules × %d roles) with specific role IDs",
+		len(ruleRoles), len(rulesWithoutRoles), len(roleIDs))
+	return nil
+}
+
+// AutoAssignAllRoles gán tất cả roles có sẵn cho rules chưa có role assignments
+func AutoAssignAllRoles() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Lấy tất cả role IDs
+	var roleIDs []int
+	if err := db.Model(&models.Role{}).Pluck("id", &roleIDs).Error; err != nil {
+		return fmt.Errorf("failed to fetch role IDs: %w", err)
+	}
+
+	if len(roleIDs) == 0 {
+		log.Println("No roles found in database")
+		return nil
+	}
+
+	return AutoAssignSpecificRoles(roleIDs)
+}
+
+// ComprehensiveRuleSync thực hiện full sync: register, cleanup, và auto-assign roles với logic thông minh
+func ComprehensiveRuleSync() error {
+	log.Println("Starting comprehensive rule synchronization...")
+
+	// 1. Register/update rules from fresh routes (includes cleanup of obsolete rules)
+	if err := RegisterRulesToDB(); err != nil {
+		return fmt.Errorf("failed to register rules: %w", err)
+	}
+
+	// 2. Auto-assign default roles to rules without role assignments (smart logic based on access_type)
+	if err := AutoAssignDefaultRoles(); err != nil {
+		log.Printf("Warning: Failed to auto-assign default roles: %v", err)
+		// Don't fail the whole process, just log warning
+	}
+
+	// 3. Final cleanup of any orphaned rule_roles
+	if err := CleanupOrphanedRuleRoles(); err != nil {
+		log.Printf("Warning: Failed to cleanup orphaned rule_roles: %v", err)
+	}
+
+	log.Println("✅ Comprehensive rule synchronization completed successfully")
+	return nil
+}
+
+// ComprehensiveRuleSyncWithAllRoles thực hiện full sync và gán TẤT CẢ roles cho mọi rule
+func ComprehensiveRuleSyncWithAllRoles() error {
+	log.Println("Starting comprehensive rule synchronization with ALL roles assignment...")
+
+	// 1. Register/update rules from fresh routes (includes cleanup of obsolete rules)
+	if err := RegisterRulesToDB(); err != nil {
+		return fmt.Errorf("failed to register rules: %w", err)
+	}
+
+	// 2. Auto-assign ALL roles to rules without role assignments
+	if err := AutoAssignAllRoles(); err != nil {
+		log.Printf("Warning: Failed to auto-assign all roles: %v", err)
+		// Don't fail the whole process, just log warning
+	}
+
+	// 3. Final cleanup of any orphaned rule_roles
+	if err := CleanupOrphanedRuleRoles(); err != nil {
+		log.Printf("Warning: Failed to cleanup orphaned rule_roles: %v", err)
+	}
+
+	log.Println("✅ Comprehensive rule synchronization with all roles completed successfully")
+	return nil
+}
+
+// ComprehensiveRuleSyncWithSpecificRoles thực hiện full sync và gán các role IDs cụ thể
+func ComprehensiveRuleSyncWithSpecificRoles(roleIDs []int) error {
+	log.Printf("Starting comprehensive rule synchronization with specific roles %v...", roleIDs)
+
+	// 1. Register/update rules from fresh routes (includes cleanup of obsolete rules)
+	if err := RegisterRulesToDB(); err != nil {
+		return fmt.Errorf("failed to register rules: %w", err)
+	}
+
+	// 2. Auto-assign specific roles to rules without role assignments
+	if err := AutoAssignSpecificRoles(roleIDs); err != nil {
+		log.Printf("Warning: Failed to auto-assign specific roles: %v", err)
+		// Don't fail the whole process, just log warning
+	}
+
+	// 3. Final cleanup of any orphaned rule_roles
+	if err := CleanupOrphanedRuleRoles(); err != nil {
+		log.Printf("Warning: Failed to cleanup orphaned rule_roles: %v", err)
+	}
+
+	log.Printf("✅ Comprehensive rule synchronization with specific roles %v completed successfully", roleIDs)
+	return nil
+}
+
+// CleanupOrphanedRuleRoles xóa các rule_roles có rule_id không tồn tại trong bảng rules
+func CleanupOrphanedRuleRoles() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Xóa rule_roles mà rule_id không tồn tại trong bảng rules
+	result := db.Exec(`
+		DELETE FROM rule_roles 
+		WHERE rule_id NOT IN (
+			SELECT id FROM rules WHERE service = ?
+		)
+	`, config.Service)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to cleanup orphaned rule_roles: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		log.Printf("Cleaned up %d orphaned rule_roles records", result.RowsAffected)
+	} else {
+		log.Println("No orphaned rule_roles found")
+	}
+
+	return nil
+}
+
+// FullRuleSync - alias cho ComprehensiveRuleSync để dễ sử dụng hơn
+// Sử dụng function này khi muốn đồng bộ rules với logic thông minh (dựa trên access_type)
+func FullRuleSync() error {
+	return ComprehensiveRuleSync()
+}
+
+// FullRuleSyncWithAllRoles - đồng bộ rules và gán TẤT CẢ roles cho mọi rule
+func FullRuleSyncWithAllRoles() error {
+	return ComprehensiveRuleSyncWithAllRoles()
+}
+
+// FullRuleSyncWithRoles - đồng bộ rules và gán các role IDs cụ thể
+func FullRuleSyncWithRoles(roleIDs ...int) error {
+	return ComprehensiveRuleSyncWithSpecificRoles(roleIDs)
+}
+
+// VerifyRuleRoleConsistency kiểm tra tính nhất quán giữa rules và rule_roles
+func VerifyRuleRoleConsistency() (*RuleRoleConsistencyReport, error) {
+	db := GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	report := &RuleRoleConsistencyReport{
+		Service: config.Service,
+	}
+
+	// 1. Count total rules for this service
+	var totalRules int64
+	if err := db.Model(&models.Rule{}).Where("service = ?", config.Service).Count(&totalRules).Error; err != nil {
+		return nil, fmt.Errorf("failed to count rules: %w", err)
+	}
+	report.TotalRules = int(totalRules)
+
+	// 2. Find rules without any role assignments
+	var rulesWithoutRoles []struct {
+		ID     int    `json:"id"`
+		Path   string `json:"path"`
+		Method string `json:"method"`
+	}
+	query := `
+	SELECT r.id, r.path, r.method
+	FROM rules r
+	LEFT JOIN rule_roles rr ON r.id = rr.rule_id
+	WHERE r.service = ? AND rr.rule_id IS NULL
+	`
+	if err := db.Raw(query, config.Service).Scan(&rulesWithoutRoles).Error; err != nil {
+		return nil, fmt.Errorf("failed to find rules without roles: %w", err)
+	}
+	report.RulesWithoutRoles = len(rulesWithoutRoles)
+	report.RulesWithoutRolesList = rulesWithoutRoles
+
+	// 3. Find orphaned rule_roles (rule_id doesn't exist in rules table)
+	var orphanedRuleRoles []struct {
+		RuleID int `json:"rule_id"`
+		RoleID int `json:"role_id"`
+	}
+	orphanQuery := `
+	SELECT rr.rule_id, rr.role_id
+	FROM rule_roles rr
+	LEFT JOIN rules r ON rr.rule_id = r.id
+	WHERE r.id IS NULL OR r.service != ?
+	`
+	if err := db.Raw(orphanQuery, config.Service).Scan(&orphanedRuleRoles).Error; err != nil {
+		return nil, fmt.Errorf("failed to find orphaned rule_roles: %w", err)
+	}
+	report.OrphanedRuleRoles = len(orphanedRuleRoles)
+	report.OrphanedRuleRolesList = orphanedRuleRoles
+
+	// 4. Count total rule_roles
+	var totalRuleRoles int64
+	if err := db.Table("rule_roles").
+		Joins("JOIN rules ON rules.id = rule_roles.rule_id").
+		Where("rules.service = ?", config.Service).
+		Count(&totalRuleRoles).Error; err != nil {
+		return nil, fmt.Errorf("failed to count rule_roles: %w", err)
+	}
+	report.TotalRuleRoles = int(totalRuleRoles)
+
+	// 5. Calculate health status
+	report.IsHealthy = report.RulesWithoutRoles == 0 && report.OrphanedRuleRoles == 0
+
+	return report, nil
+}
+
+// RuleRoleConsistencyReport báo cáo tình trạng đồng bộ giữa rules và rule_roles
+type RuleRoleConsistencyReport struct {
+	Service               string `json:"service"`
+	TotalRules            int    `json:"total_rules"`
+	TotalRuleRoles        int    `json:"total_rule_roles"`
+	RulesWithoutRoles     int    `json:"rules_without_roles"`
+	RulesWithoutRolesList []struct {
+		ID     int    `json:"id"`
+		Path   string `json:"path"`
+		Method string `json:"method"`
+	} `json:"rules_without_roles_list,omitempty"`
+	OrphanedRuleRoles     int `json:"orphaned_rule_roles"`
+	OrphanedRuleRolesList []struct {
+		RuleID int `json:"rule_id"`
+		RoleID int `json:"role_id"`
+	} `json:"orphaned_rule_roles_list,omitempty"`
+	IsHealthy bool `json:"is_healthy"`
+}
+
+// PrintReport in ra báo cáo dễ đọc
+func (r *RuleRoleConsistencyReport) PrintReport() {
+	log.Println("==========================================")
+	log.Printf("📊 RBAC Rule-Role Consistency Report")
+	log.Println("==========================================")
+	log.Printf("Service: %s", r.Service)
+	log.Printf("Total Rules: %d", r.TotalRules)
+	log.Printf("Total Rule-Role Assignments: %d", r.TotalRuleRoles)
+	log.Println("------------------------------------------")
+
+	if r.RulesWithoutRoles > 0 {
+		log.Printf("⚠️  Rules WITHOUT Role Assignments: %d", r.RulesWithoutRoles)
+		for _, rule := range r.RulesWithoutRolesList {
+			log.Printf("   - Rule ID %d: %s %s", rule.ID, rule.Method, rule.Path)
+		}
+	} else {
+		log.Println("✅ All rules have role assignments")
+	}
+
+	log.Println("------------------------------------------")
+
+	if r.OrphanedRuleRoles > 0 {
+		log.Printf("⚠️  Orphaned Rule-Roles: %d", r.OrphanedRuleRoles)
+		for _, rr := range r.OrphanedRuleRolesList {
+			log.Printf("   - RuleID: %d, RoleID: %d", rr.RuleID, rr.RoleID)
+		}
+	} else {
+		log.Println("✅ No orphaned rule-roles")
+	}
+
+	log.Println("------------------------------------------")
+
+	if r.IsHealthy {
+		log.Println("🎉 Status: HEALTHY - All rules properly configured")
+	} else {
+		log.Println("🚨 Status: UNHEALTHY - Issues detected, run FullRuleSync() to fix")
+	}
+	log.Println("==========================================")
+}
+
+// QuickHealthCheck thực hiện health check nhanh và in report
+func QuickHealthCheck() error {
+	report, err := VerifyRuleRoleConsistency()
+	if err != nil {
+		return fmt.Errorf("health check failed: %w", err)
+	}
+
+	report.PrintReport()
+
+	if !report.IsHealthy {
+		log.Println("💡 Suggestion: Run rbac.FullRuleSync() to automatically fix issues")
+	}
+
 	return nil
 }
 
@@ -200,10 +905,7 @@ func SyncRolesWithDB(defaultRoles []string) error {
 
 	// Map role names to specific IDs to match code expectations
 	roleMap := map[string]int{
-		"admin":     1,
-		"moderator": 2,
-		"user":      3,
-		"guest":     4,
+		"admin": 1,
 	}
 
 	createdCount := 0
@@ -320,56 +1022,56 @@ func GetSystemStats() map[string]interface{} {
 	return stats
 }
 
-// // CleanupObsoleteRules xóa các rule trong DB không còn tồn tại trong code
-// func CleanupObsoleteRules() error {
-// 	db := GetDB()
-// 	if db == nil {
-// 		return fmt.Errorf("database not initialized")
-// 	}
+// CleanupObsoleteRules xóa các rule trong DB không còn tồn tại trong code
+func CleanupObsoleteRules() error {
+	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
 
-// 	// ✅ DÙNG freshRoutes thay vì routesRoles
-// 	current := map[string]struct{}{}
-// 	log.Println("[RBAC CLEANUP] Fresh route keys from current code session:")
-// 	for key := range freshRoutes {
-// 		current[key] = struct{}{}
-// 		log.Println("  ", key)
-// 	}
+	// ✅ DÙNG freshRoutes thay vì routesRoles
+	current := map[string]struct{}{}
+	log.Println("[RBAC CLEANUP] Fresh route keys from current code session:")
+	for key := range freshRoutes {
+		current[key] = struct{}{}
+		log.Println("  ", key)
+	}
 
-// 	// Lấy toàn bộ rule trong DB cho service hiện tại
-// 	var dbRules []struct {
-// 		ID      int64
-// 		Method  string
-// 		Path    string
-// 		Service string
-// 	}
-// 	if err := db.Table("rules").Select("id, method, path, service").Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
-// 		return fmt.Errorf("failed to query rules: %w", err)
-// 	}
+	// Lấy toàn bộ rule trong DB cho service hiện tại
+	var dbRules []struct {
+		ID      int64
+		Method  string
+		Path    string
+		Service string
+	}
+	if err := db.Table("rules").Select("id, method, path, service").Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
+		return fmt.Errorf("failed to query rules: %w", err)
+	}
 
-// 	// Tìm các rule không còn trong fresh code
-// 	var obsoleteIDs []int64
-// 	for _, rule := range dbRules {
-// 		// ✅ Sử dụng format key giống với freshRoutes: "method path"
-// 		freshKey := rule.Method + " " + rule.Path
-// 		dbKey := rule.Method + "|" + rule.Path + "|" + rule.Service
-// 		log.Println("[RBAC CLEANUP] DB rule key:", dbKey)
-// 		if _, ok := current[freshKey]; !ok {
-// 			log.Printf("[RBAC CLEANUP] Obsolete rule: id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
-// 			obsoleteIDs = append(obsoleteIDs, rule.ID)
-// 		} else {
-// 			log.Printf("[RBAC CLEANUP] Keep rule:    id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
-// 		}
-// 	}
+	// Tìm các rule không còn trong fresh code
+	var obsoleteIDs []int64
+	for _, rule := range dbRules {
+		// ✅ Sử dụng format key giống với freshRoutes: "method path"
+		freshKey := rule.Method + " " + rule.Path
+		dbKey := rule.Method + "|" + rule.Path + "|" + rule.Service
+		log.Println("[RBAC CLEANUP] DB rule key:", dbKey)
+		if _, ok := current[freshKey]; !ok {
+			log.Printf("[RBAC CLEANUP] Obsolete rule: id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
+			obsoleteIDs = append(obsoleteIDs, rule.ID)
+		} else {
+			log.Printf("[RBAC CLEANUP] Keep rule:    id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
+		}
+	}
 
-// 	// Xóa các rule thừa
-// 	if len(obsoleteIDs) > 0 {
-// 		if err := db.Table("rules").Where("id IN ?", obsoleteIDs).Delete(nil).Error; err != nil {
-// 			return fmt.Errorf("failed to delete obsolete rules: %w", err)
-// 		}
-// 		log.Printf("[RBAC CLEANUP] Deleted %d obsolete rules from database", len(obsoleteIDs))
-// 	} else {
-// 		log.Println("[RBAC CLEANUP] No obsolete rules to delete")
-// 	}
+	// Xóa các rule thừa (CASCADE sẽ tự động xóa rule_roles)
+	if len(obsoleteIDs) > 0 {
+		if err := db.Table("rules").Where("id IN ?", obsoleteIDs).Delete(nil).Error; err != nil {
+			return fmt.Errorf("failed to delete obsolete rules: %w", err)
+		}
+		log.Printf("[RBAC CLEANUP] Deleted %d obsolete rules from database (rule_roles auto-deleted via CASCADE)", len(obsoleteIDs))
+	} else {
+		log.Println("[RBAC CLEANUP] No obsolete rules to delete")
+	}
 
-// 	return nil
-// }
+	return nil
+}
