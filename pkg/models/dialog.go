@@ -26,8 +26,8 @@ type Dialog struct {
 	Words        []Word        `gorm:"many2many:word_in_dialog" json:"-"`
 	FillInBlanks []FillInBlank `gorm:"foreignKey:DialogID" json:"-"`
 	Comments     []Comment     `gorm:"foreignKey:DialogID" json:"-"`
-	Author       User          `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
-	Fixer        User          `gorm:"foreignKey:FixerID;references:ID" json:"-"`
+	Author       Employee          `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
+	Fixer        Employee          `gorm:"foreignKey:FixerID;references:ID" json:"-"`
 }
 
 // TableName overrides the table name used by Dialog to `dialogs`

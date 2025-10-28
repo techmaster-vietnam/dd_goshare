@@ -28,7 +28,7 @@ type Rule struct {
 	Method     string `gorm:"size:10;not null;uniqueIndex:idx_rule_unique" json:"method"`
 	IsPrivate  bool   `gorm:"index" json:"is_private"`
 	Service    string `gorm:"size:50;uniqueIndex:idx_rule_unique" json:"service"`
-	AccessType int    `gorm:"type:smallint;default:4" json:"access_type"` // 1: allow, 2: forbid, 3: allow_all, 4: forbid_all
+	AccessType int    `gorm:"type:smallint;default:3" json:"access_type"` // 1: allow, 2: forbid, 3: allow_all, 4: forbid_all
 	// Relationships
 	Roles []Role `gorm:"many2many:rule_roles;" json:"roles,omitempty"`
 }

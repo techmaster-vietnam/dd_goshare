@@ -10,7 +10,7 @@ type Image struct {
 	AuthorID string  `gorm:"size:12;index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"author_id"`
 
 	// Quan hệ với các bảng khác
-	Author User `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
+	Author Employee `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
 }
 
 // TableName overrides the table name used by Image to `images`
