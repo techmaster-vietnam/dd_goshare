@@ -6,8 +6,8 @@ import (
 
 // CustomerStatistics đại diện cho thống kê khách hàng
 type CustomerStatistics struct {
-	ID                      string `gorm:"primaryKey;size:12" json:"id"`
-	CustomerID              string `gorm:"size:12;uniqueIndex" json:"customer_id"`
+	ID                      string `gorm:"primaryKey;size:50" json:"id"`
+	CustomerID              string `gorm:"size:50;uniqueIndex" json:"customer_id"`
 	TotalDialogsCompleted   int    `gorm:"default:0" json:"total_dialogs_completed"`
 	TotalExercisesCompleted int    `gorm:"default:0" json:"total_exercises_completed"`
 	Streak                  int    `gorm:"default:0" json:"streak"`
