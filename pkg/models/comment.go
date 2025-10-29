@@ -8,6 +8,12 @@ type Comment struct {
 	Likes           int     `gorm:"default:0" json:"likes"`
 	Rating          *int    `json:"rating"`
 	ParentCommentID *string `gorm:"size:12;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"parent_comment_id"`
+
+	// Quan hệ với các bảng khác
+	Dialog  Dialog    `gorm:"foreignKey:DialogID;references:ID" json:"-"`
+	User    Customer  `gorm:"foreignKey:UserID;references:ID" json:"-"`
+	Parent  *Comment  `gorm:"foreignKey:ParentCommentID;references:ID" json:"-"`
+	Replies []Comment `gorm:"foreignKey:ParentCommentID;references:ID" json:"-"`
 }
 
 // TableName chỉ định tên bảng cho Comment

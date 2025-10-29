@@ -6,12 +6,15 @@ import (
 
 // CustomerStatistics đại diện cho thống kê khách hàng
 type CustomerStatistics struct {
-	ID                      string     `gorm:"primaryKey;size:12" json:"id"`
-	CustomerID              string     `gorm:"size:12;uniqueIndex" json:"customer_id"`
-	TotalDialogsCompleted   int        `gorm:"default:0" json:"total_dialogs_completed"`
-	TotalExercisesCompleted int        `gorm:"default:0" json:"total_exercises_completed"`
-	Streak                  int        `gorm:"default:0" json:"streak"`
-	Score                   int        `gorm:"default:0" json:"score"`
+	ID                      string `gorm:"primaryKey;size:12" json:"id"`
+	CustomerID              string `gorm:"size:12;uniqueIndex" json:"customer_id"`
+	TotalDialogsCompleted   int    `gorm:"default:0" json:"total_dialogs_completed"`
+	TotalExercisesCompleted int    `gorm:"default:0" json:"total_exercises_completed"`
+	Streak                  int    `gorm:"default:0" json:"streak"`
+	Score                   int    `gorm:"default:0" json:"score"`
+
+	// Quan hệ với các bảng khác
+	Customer Customer `gorm:"foreignKey:CustomerID;references:ID" json:"-"`
 }
 
 // DialogStatistics đại diện cho thống kê hội thoại
@@ -24,6 +27,9 @@ type DialogStatistics struct {
 	AvgRating        float64   `gorm:"type:numeric(3,2);default:0.0" json:"avg_rating"`
 	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+
+	// Quan hệ với các bảng khác
+	Dialog Dialog `gorm:"foreignKey:DialogID;references:ID" json:"-"`
 }
 
 // SystemStatistics đại diện cho thống kê hệ thống

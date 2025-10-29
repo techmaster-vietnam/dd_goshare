@@ -2,12 +2,16 @@ package models
 
 // CustomerTopicProgress đại diện cho tiến trình của khách hàng trong một chủ đề
 type CustomerTopicProgress struct {
-	CustomerID        string   `gorm:"primaryKey;size:50;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"`
+	CustomerID         string   `gorm:"primaryKey;size:50;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"`
 	TopicID            string   `gorm:"primaryKey;size:12;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"topic_id"`
 	CompletedDialogIDs []string `gorm:"type:text;serializer:json;default:'[]'" json:"completed_dialog_ids"`
 	IsCompleted        bool     `gorm:"default:false" json:"is_completed"`
 	NextDialogID       string   `gorm:"size:12" json:"next_dialog_id,omitempty"`
 	LastUpdated        int64    `gorm:"not null" json:"last_updated"`
+
+	// Quan hệ với các bảng khác
+	Customer Customer `gorm:"foreignKey:CustomerID;references:ID" json:"-"`
+	Topic    Topic    `gorm:"foreignKey:TopicID;references:ID" json:"-"`
 }
 
 // DialogCompletion đại diện cho việc hoàn thành các bài tập trong hội thoại
@@ -21,6 +25,11 @@ type DialogCompletion struct {
 	ScoreSpeaking      int    `gorm:"default:0" json:"score_speaking"`
 	ScoreWriting       int    `gorm:"default:0" json:"score_writing"`
 	// IsSync             bool   `gorm:"not null" json:"isSync"`
+
+	// Quan hệ với các bảng khác
+	Customer Customer `gorm:"foreignKey:CustomerID;references:ID" json:"-"`
+	Dialog   Dialog   `gorm:"foreignKey:DialogID;references:ID" json:"-"`
+	Topic    Topic    `gorm:"foreignKey:TopicID;references:ID" json:"-"`
 }
 
 // TableName chỉ định tên bảng cho CustomerTopicProgress

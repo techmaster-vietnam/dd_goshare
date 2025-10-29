@@ -11,6 +11,8 @@ type Image struct {
 
 	// Quan hệ với các bảng khác
 	Author Employee `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
+	Dialog Dialog   `gorm:"foreignKey:DialogID;references:ID" json:"-"`
+	Topic  Topic    `gorm:"foreignKey:TopicID;references:ID" json:"-"`
 }
 
 // TableName overrides the table name used by Image to `images`
