@@ -8,15 +8,15 @@ import (
 type Dialog struct {
 	ID        string          `gorm:"primaryKey;size:12" json:"id"`
 	TopicID   string          `gorm:"size:12;index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"topic_id"`
-	PrevID    string          `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"prev_id"`
-	NextID    string          `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"next_id"`
+	PrevID    *string         `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"prev_id"`
+	NextID    *string         `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"next_id"`
 	Script    string          `gorm:"type:text;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"script"`
 	Title     string          `gorm:"size:200;not null" json:"title"`
 	RawText   string          `gorm:"type:text;not null" json:"raw_text"`
 	AvgRating float64         `gorm:"default:0" json:"avg_rating"`
 	Result    json.RawMessage `gorm:"type:jsonb" json:"result"`
 	AuthorID  string          `gorm:"size:12;index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"author_id"`
-	FixerID   string          `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"fixed_id"`
+	FixerID   *string         `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"fixed_id"`
 
 	// Quan hệ với các bảng khác
 	Topic        Topic         `gorm:"foreignKey:TopicID;references:ID" json:"-"`
@@ -26,8 +26,8 @@ type Dialog struct {
 	Words        []Word        `gorm:"many2many:word_in_dialog" json:"-"`
 	FillInBlanks []FillInBlank `gorm:"foreignKey:DialogID" json:"-"`
 	Comments     []Comment     `gorm:"foreignKey:DialogID" json:"-"`
-	Author       Employee          `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
-	Fixer        Employee          `gorm:"foreignKey:FixerID;references:ID" json:"-"`
+	Author       Employee      `gorm:"foreignKey:AuthorID;references:ID" json:"-"`
+	Fixer        Employee      `gorm:"foreignKey:FixerID;references:ID" json:"-"`
 }
 
 // TableName overrides the table name used by Dialog to `dialogs`
