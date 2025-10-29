@@ -45,7 +45,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/techmaster-vietnam/dd_goshare/pkg/models"
-	"gorm.io/gorm"
 )
 
 // BuildPublicRoutes tự động phát hiện public routes từ registered routes (theo Core pattern)
@@ -122,25 +121,22 @@ func RegisterRulesToDB() error {
 
 		if result.Error != nil {
 			// Rule doesn't exist with this exact path+method+service
-			// Check if there's an existing rule with same method+service but different path (path change scenario)
+			// Try to find an existing rule by method+service (same logical rule, path changed)
 			ruleKey := rule.Method + "|" + rule.Service
-			if oldRule, exists := dbRuleMap[ruleKey]; exists && oldRule.Path != rule.Path {
-				// Path has changed! Migrate rule_roles
-				log.Printf("🔄 DETECTED PATH CHANGE: %s -> %s (Method: %s, Service: %s)",
-					oldRule.Path, rule.Path, rule.Method, rule.Service)
-
-				// Create new rule first
-				if err := db.Create(&rule).Error; err != nil {
-					return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
+			if oldRule, exists := dbRuleMap[ruleKey]; exists {
+				// Update existing rule in-place (preserve ID so rule_roles keep pointing to it)
+				if oldRule.Path != rule.Path || oldRule.IsPrivate != rule.IsPrivate {
+					updates := map[string]interface{}{
+						"path":       rule.Path,
+						"is_private": rule.IsPrivate,
+					}
+					if err := db.Model(oldRule).Updates(updates).Error; err != nil {
+						return fmt.Errorf("failed to update existing rule %d in-place: %w", oldRule.ID, err)
+					}
+					log.Printf("♻️  Updated existing rule in-place: id=%d method=%s path=%s (preserved access_type)", oldRule.ID, rule.Method, rule.Path)
+				} else {
+					log.Printf("♻️  Keep existing rule unchanged: id=%d method=%s path=%s", oldRule.ID, rule.Method, rule.Path)
 				}
-				log.Printf("✅ Created new rule: %s %s (ID: %d)", rule.Method, rule.Path, rule.ID)
-
-				// Migrate rule_roles from old rule to new rule
-				if err := migrateRuleRoles(db, oldRule.ID, rule.ID); err != nil {
-					log.Printf("⚠️  Warning: Failed to migrate rule_roles from %d to %d: %v", oldRule.ID, rule.ID, err)
-				}
-
-				// The old rule will be cleaned up by CleanupObsoleteRules later
 			} else {
 				// Completely new rule
 				if err := db.Create(&rule).Error; err != nil {
@@ -149,7 +145,7 @@ func RegisterRulesToDB() error {
 				log.Printf("✅ Created new rule: %s %s (ID: %d)", rule.Method, rule.Path, rule.ID)
 			}
 		} else {
-			// Rule exists, only update safe fields that won't override user customizations
+			// Rule exists with same path+method+service: update safe fields only
 			updates := map[string]interface{}{
 				"is_private": rule.IsPrivate,
 				// NOTE: Do NOT update access_type - preserve user customizations
@@ -163,11 +159,11 @@ func RegisterRulesToDB() error {
 
 	log.Printf("DEBUG: Successfully synced %d rules to DB", len(rules))
 
-	// ✅ Cleanup obsolete rules after syncing fresh routes
-	if err := CleanupObsoleteRules(); err != nil {
-		log.Printf("Warning: Failed to cleanup obsolete rules: %v", err)
-		// Don't return error, just log warning to not break the main flow
-	}
+	// // ✅ Cleanup obsolete rules after syncing fresh routes
+	// if err := CleanupObsoleteRules(); err != nil {
+	// 	log.Printf("Warning: Failed to cleanup obsolete rules: %v", err)
+	// 	// Don't return error, just log warning to not break the main flow
+	// }
 
 	return nil
 }
@@ -183,59 +179,7 @@ func SyncRulesToDB() error {
 	return nil
 }
 
-// migrateRuleRoles di chuyển rule_roles từ rule cũ sang rule mới khi path thay đổi
-func migrateRuleRoles(db *gorm.DB, oldRuleID, newRuleID int) error {
-	// 1. Lấy tất cả rule_roles của rule cũ
-	var oldRuleRoles []models.RuleRole
-	if err := db.Where("rule_id = ?", oldRuleID).Find(&oldRuleRoles).Error; err != nil {
-		return fmt.Errorf("failed to fetch old rule_roles: %w", err)
-	}
 
-	if len(oldRuleRoles) == 0 {
-		log.Printf("⚠️  No rule_roles to migrate from rule %d", oldRuleID)
-		return nil
-	}
-
-	log.Printf("🔄 Starting migration of %d rule_roles from rule %d to rule %d", len(oldRuleRoles), oldRuleID, newRuleID)
-
-	// 2. Migrate từng rule_role một để tránh lỗi batch insert
-	migratedCount := 0
-	for _, oldRuleRole := range oldRuleRoles {
-		newRuleRole := models.RuleRole{
-			RuleID:  newRuleID,
-			RoleID:  oldRuleRole.RoleID,
-			Allowed: oldRuleRole.Allowed,
-		}
-
-		// Check if this rule_role already exists
-		var existingRuleRole models.RuleRole
-		result := db.Where("rule_id = ? AND role_id = ?", newRuleID, oldRuleRole.RoleID).First(&existingRuleRole)
-
-		if result.Error != nil {
-			// Doesn't exist, create it
-			if err := db.Create(&newRuleRole).Error; err != nil {
-				log.Printf("❌ Failed to migrate rule_role: rule_id=%d, role_id=%d, error=%v",
-					oldRuleID, oldRuleRole.RoleID, err)
-				continue // Continue with other roles instead of failing completely
-			}
-			log.Printf("   ✅ Migrated: RuleID %d -> %d, RoleID %d, Allowed %v",
-				oldRuleID, newRuleID, oldRuleRole.RoleID, oldRuleRole.Allowed)
-			migratedCount++
-		} else {
-			log.Printf("   ℹ️  Rule-role already exists: RuleID %d, RoleID %d (skipping)",
-				newRuleID, oldRuleRole.RoleID)
-		}
-	}
-
-	if migratedCount < len(oldRuleRoles) {
-		log.Printf("⚠️  Warning: Only migrated %d out of %d rule_roles", migratedCount, len(oldRuleRoles))
-	} else {
-		log.Printf("✅ Successfully migrated all %d rule_roles from rule %d to rule %d",
-			migratedCount, oldRuleID, newRuleID)
-	}
-
-	return nil
-}
 
 // DebugRuleMigration hiển thị chi tiết rule_roles trước và sau migration
 func DebugRuleMigration(oldRuleID, newRuleID int) error {
@@ -785,116 +729,12 @@ func (r *RuleRoleConsistencyReport) PrintReport() {
 func QuickHealthCheck() error {
 	report, err := VerifyRuleRoleConsistency()
 	if err != nil {
-		return fmt.Errorf("health check failed: %w", err)
+		return fmt.Errorf("failed to verify rule-role consistency: %w", err)
 	}
 
 	report.PrintReport()
-
-	if !report.IsHealthy {
-		log.Println("💡 Suggestion: Run rbac.FullRuleSync() to automatically fix issues")
-	}
-
 	return nil
 }
-
-// func RegisterRulesToDB() error {
-// 	db := GetDB()
-// 	if db == nil {
-// 		return fmt.Errorf("database not initialized")
-// 	}
-
-// 	log.Printf("DEBUG: freshRoutes count: %d", len(freshRoutes))
-
-// 	var rules []models.Rule
-
-// 	// ✅ DÙNG freshRoutes thay vì routesRoles để chỉ register routes từ code hiện tại
-// 	for routeKey, route := range freshRoutes {
-// 		log.Printf("DEBUG: Processing route: %s -> %+v", routeKey, route)
-// 		rule := models.Rule{
-// 			// Name sẽ được set qua API, không auto-sync từ code
-// 			Path:       route.Path,
-// 			Method:     route.Method,
-// 			IsPrivate:  route.IsPrivate,
-// 			Service:    config.Service,
-// 			AccessType: route.AccessType, // ✅ Thêm access_type từ code
-// 		}
-// 		rules = append(rules, rule)
-// 	}
-
-// 	if len(rules) == 0 {
-// 		log.Println("No fresh routes to register as rules")
-// 		return nil
-// 	}
-
-// 	log.Printf("DEBUG: Will register %d rules to DB", len(rules))
-
-// 	// Build a map of all existing rules by service
-// 	var dbRules []models.Rule
-// 	if err := db.Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
-// 		return fmt.Errorf("failed to query existing rules: %w", err)
-// 	}
-// 	dbRuleMap := make(map[string]*models.Rule) // key: method|path
-// 	for i := range dbRules {
-// 		key := dbRules[i].Method + "|" + dbRules[i].Path
-// 		dbRuleMap[key] = &dbRules[i]
-// 	}
-
-// 	for _, rule := range rules {
-// 		key := rule.Method + "|" + rule.Path
-// 		if existingRule, ok := dbRuleMap[key]; ok {
-// 			// Rule exists with same method/path/service, update fields
-// 			updates := map[string]interface{}{
-// 				"is_private": rule.IsPrivate,
-// 			}
-// 			validTypes := map[int]bool{1: true, 2: true, 3: true}
-// 			if validTypes[rule.AccessType] && rule.AccessType != existingRule.AccessType {
-// 				updates["access_type"] = rule.AccessType
-// 				log.Printf("DEBUG: Updated access_type for rule: %s %s (from %d to %d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
-// 			} else {
-// 				log.Printf("DEBUG: Preserved access_type for rule: %s %s (db=%d, code=%d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
-// 			}
-// 			if err := db.Model(existingRule).Updates(updates).Error; err != nil {
-// 				return fmt.Errorf("failed to update rule %s %s: %w", rule.Method, rule.Path, err)
-// 			}
-// 			continue
-// 		}
-
-// 		// If not found by method/path, try to find by service and (old path or method)
-// 		// This is a simple heuristic: if a rule for this service exists with a different path/method, update it in place
-// 		// (In production, you may want a more robust migration map or unique name field)
-// 		var existingRule models.Rule
-// 		result := db.Where("service = ? AND (path = ? OR method = ?)", rule.Service, rule.Path, rule.Method).First(&existingRule)
-// 		if result.Error == nil {
-// 			// Update the existing rule's path/method in place
-// 			updates := map[string]interface{}{
-// 				"path":       rule.Path,
-// 				"method":     rule.Method,
-// 				"is_private": rule.IsPrivate,
-// 			}
-// 			validTypes := map[int]bool{1: true, 2: true, 3: true}
-// 			if validTypes[rule.AccessType] && rule.AccessType != existingRule.AccessType {
-// 				updates["access_type"] = rule.AccessType
-// 				log.Printf("DEBUG: Updated access_type for rule: %s %s (from %d to %d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
-// 			} else {
-// 				log.Printf("DEBUG: Preserved access_type for rule: %s %s (db=%d, code=%d)", rule.Method, rule.Path, existingRule.AccessType, rule.AccessType)
-// 			}
-// 			if err := db.Model(&existingRule).Updates(updates).Error; err != nil {
-// 				return fmt.Errorf("failed to update rule (moved) %s %s: %w", rule.Method, rule.Path, err)
-// 			}
-// 			log.Printf("DEBUG: Updated rule in place (moved): id=%d new=%s %s", existingRule.ID, rule.Method, rule.Path)
-// 			continue
-// 		}
-
-// 		// Otherwise, create new rule
-// 		if err := db.Create(&rule).Error; err != nil {
-// 			return fmt.Errorf("failed to create rule %s %s: %w", rule.Method, rule.Path, err)
-// 		}
-// 		log.Printf("DEBUG: Created new rule: %s %s", rule.Method, rule.Path)
-// 	}
-
-// 	log.Printf("DEBUG: Successfully synced %d rules to DB", len(rules))
-// 	return nil
-// }
 
 // SyncRolesWithDB sync default roles with database
 func SyncRolesWithDB(defaultRoles []string) error {
@@ -1022,56 +862,56 @@ func GetSystemStats() map[string]interface{} {
 	return stats
 }
 
-// CleanupObsoleteRules xóa các rule trong DB không còn tồn tại trong code
-func CleanupObsoleteRules() error {
-	db := GetDB()
-	if db == nil {
-		return fmt.Errorf("database not initialized")
-	}
+// // CleanupObsoleteRules xóa các rule trong DB không còn tồn tại trong code
+// func CleanupObsoleteRules() error {
+// 	db := GetDB()
+// 	if db == nil {
+// 		return fmt.Errorf("database not initialized")
+// 	}
 
-	// ✅ DÙNG freshRoutes thay vì routesRoles
-	current := map[string]struct{}{}
-	log.Println("[RBAC CLEANUP] Fresh route keys from current code session:")
-	for key := range freshRoutes {
-		current[key] = struct{}{}
-		log.Println("  ", key)
-	}
+// 	// ✅ DÙNG freshRoutes thay vì routesRoles
+// 	current := map[string]struct{}{}
+// 	log.Println("[RBAC CLEANUP] Fresh route keys from current code session:")
+// 	for key := range freshRoutes {
+// 		current[key] = struct{}{}
+// 		log.Println("  ", key)
+// 	}
 
-	// Lấy toàn bộ rule trong DB cho service hiện tại
-	var dbRules []struct {
-		ID      int64
-		Method  string
-		Path    string
-		Service string
-	}
-	if err := db.Table("rules").Select("id, method, path, service").Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
-		return fmt.Errorf("failed to query rules: %w", err)
-	}
+// 	// Lấy toàn bộ rule trong DB cho service hiện tại
+// 	var dbRules []struct {
+// 		ID      int64
+// 		Method  string
+// 		Path    string
+// 		Service string
+// 	}
+// 	if err := db.Table("rules").Select("id, method, path, service").Where("service = ?", config.Service).Find(&dbRules).Error; err != nil {
+// 		return fmt.Errorf("failed to query rules: %w", err)
+// 	}
 
-	// Tìm các rule không còn trong fresh code
-	var obsoleteIDs []int64
-	for _, rule := range dbRules {
-		// ✅ Sử dụng format key giống với freshRoutes: "method path"
-		freshKey := rule.Method + " " + rule.Path
-		dbKey := rule.Method + "|" + rule.Path + "|" + rule.Service
-		log.Println("[RBAC CLEANUP] DB rule key:", dbKey)
-		if _, ok := current[freshKey]; !ok {
-			log.Printf("[RBAC CLEANUP] Obsolete rule: id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
-			obsoleteIDs = append(obsoleteIDs, rule.ID)
-		} else {
-			log.Printf("[RBAC CLEANUP] Keep rule:    id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
-		}
-	}
+// 	// Tìm các rule không còn trong fresh code
+// 	var obsoleteIDs []int64
+// 	for _, rule := range dbRules {
+// 		// ✅ Sử dụng format key giống với freshRoutes: "method path"
+// 		freshKey := rule.Method + " " + rule.Path
+// 		dbKey := rule.Method + "|" + rule.Path + "|" + rule.Service
+// 		log.Println("[RBAC CLEANUP] DB rule key:", dbKey)
+// 		if _, ok := current[freshKey]; !ok {
+// 			log.Printf("[RBAC CLEANUP] Obsolete rule: id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
+// 			obsoleteIDs = append(obsoleteIDs, rule.ID)
+// 		} else {
+// 			log.Printf("[RBAC CLEANUP] Keep rule:    id=%d method=%s path=%s service=%s", rule.ID, rule.Method, rule.Path, rule.Service)
+// 		}
+// 	}
 
-	// Xóa các rule thừa (CASCADE sẽ tự động xóa rule_roles)
-	if len(obsoleteIDs) > 0 {
-		if err := db.Table("rules").Where("id IN ?", obsoleteIDs).Delete(nil).Error; err != nil {
-			return fmt.Errorf("failed to delete obsolete rules: %w", err)
-		}
-		log.Printf("[RBAC CLEANUP] Deleted %d obsolete rules from database (rule_roles auto-deleted via CASCADE)", len(obsoleteIDs))
-	} else {
-		log.Println("[RBAC CLEANUP] No obsolete rules to delete")
-	}
+// 	// Xóa các rule thừa (CASCADE sẽ tự động xóa rule_roles)
+// 	if len(obsoleteIDs) > 0 {
+// 		if err := db.Table("rules").Where("id IN ?", obsoleteIDs).Delete(nil).Error; err != nil {
+// 			return fmt.Errorf("failed to delete obsolete rules: %w", err)
+// 		}
+// 		log.Printf("[RBAC CLEANUP] Deleted %d obsolete rules from database (rule_roles auto-deleted via CASCADE)", len(obsoleteIDs))
+// 	} else {
+// 		log.Println("[RBAC CLEANUP] No obsolete rules to delete")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
