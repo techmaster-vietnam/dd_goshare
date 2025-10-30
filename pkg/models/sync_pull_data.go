@@ -6,6 +6,7 @@ type SyncPullDataItem struct {
 	TotalDialogsCompleted *int                    `json:"total_dialogs_completed"`
 	CustomerTopicProgress []CustomerTopicProgress `json:"customerTopicProgressTable"`
 	DialogCompletion      []DialogCompletion      `json:"dialogCompletionTable"`
+	CustomerAchievement   []CustomerAchievement   `json:"customerAchievementTable"`
 }
 type SyncPullDataRequest struct {
 	Data SyncPullDataItem `json:"data"`
