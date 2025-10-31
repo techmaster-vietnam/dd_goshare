@@ -18,8 +18,8 @@ type Customer struct {
 
 // CustomerAchievement đại diện cho thành tựu của khách hàng
 type CustomerAchievement struct {
-	CustomerID    string `gorm:"primaryKey;size:50;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"` // Updated to match Customer.ID
-	AchievementID string `gorm:"primaryKey;size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"achievement_id"`
+	CustomerID    string `gorm:"size:50;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"customer_id"` // Updated to match Customer.ID
+	AchievementID string `gorm:"size:12;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"achievement_id"`
 	Claimed       bool   `gorm:"default:false" json:"claimed"`
 	Unlocked      bool   `gorm:"default:false" json:"unlocked"`
 
