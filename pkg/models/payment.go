@@ -7,9 +7,9 @@ import (
 )
 
 type Payment struct {
-	ID             string         `gorm:"primaryKey;size:12" json:"id"`
+	ID             string         `gorm:"primaryKey;size:32" json:"id"`
 	CustomerID     string         `gorm:"size:50;index;not null" json:"customer_id"`
-	SubscriptionID *string        `gorm:"size:12;index" json:"subscription_id"`
+	SubscriptionID *string        `gorm:"size:128;index" json:"subscription_id"`
 	Amount         float64        `gorm:"type:numeric(10,2)" json:"amount"`
 	Status         string         `gorm:"size:50;default:'pending'" json:"status"` // pending, success, failed, refunded
 	Method         string         `gorm:"size:50;not null" json:"method"`          // momo, vnpay, apple_iap, google_iap...
